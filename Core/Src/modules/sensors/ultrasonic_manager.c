@@ -7,7 +7,7 @@
   */
 /* USER CODE END Header */
 
-#include "ultrasonic_manager.h"
+#include "modules/sensors/ultrasonic_manager.h"
 
 typedef enum
 {
@@ -425,3 +425,4 @@ const char *UltrasonicManager_StatusName(UltrasonicStatus_t status)
       return "UNKNOWN";
   }
 }
+

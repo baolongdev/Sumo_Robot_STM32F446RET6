@@ -7,7 +7,7 @@
   */
 /* USER CODE END Header */
 
-#include "motor.h"
+#include "modules/control/motor.h"
 
 #define MOTOR_PERCENT_MIN   (-100)
 #define MOTOR_PERCENT_MAX   (100)
@@ -1101,3 +1101,4 @@ void MotorController_ClearFaults(MotorController_t *controller, uint32_t fault_m
   }
   controller->fault_flags &= ~fault_mask;
 }
+

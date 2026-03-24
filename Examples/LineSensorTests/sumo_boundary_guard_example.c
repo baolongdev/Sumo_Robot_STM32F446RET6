@@ -7,8 +7,8 @@
  */
 
 /* USER CODE BEGIN Includes */
-#include "line_sensor.h"
-#include "motor.h"
+#include "modules/sensors/line_sensor.h"
+#include "modules/control/motor.h"
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN PD */
@@ -61,4 +61,5 @@ if (MotorController_Start(&motor_controller) != HAL_OK)
   }
 }
 /* USER CODE END 3 */
+
 

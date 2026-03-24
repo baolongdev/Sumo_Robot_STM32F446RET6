@@ -4,7 +4,7 @@
  */
 
 /* USER CODE BEGIN Includes */
-#include "motor.h"
+#include "modules/control/motor.h"
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN PV */
@@ -51,3 +51,4 @@ else
   MotorController_PivotLeft(&motor_controller, 28U);
 }
 /* USER CODE END 3 */
+

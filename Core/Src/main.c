@@ -18,16 +18,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "app/app_main.h"
+#include "gpio.h"
 #include "i2c.h"
 #include "tim.h"
 #include "usart.h"
-#include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <string.h>
-#include "ultrasonic_manager.h"
-#include "uart_log.h"
 
 /* USER CODE END Includes */
 
@@ -38,15 +36,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define APP_HEARTBEAT_LOG_MS             2000U
-#define APP_US_LOG_MS                    120U
-#define APP_US_DEBUG_STATUS              1U
-
-#define APP_US_ECHO_RISE_TIMEOUT_US      3000U
-#define APP_US_ECHO_FALL_TIMEOUT_US      25000U
-#define APP_US_INTER_SENSOR_GAP_US       3000U
-#define APP_US_KALMAN_Q                  12.0f
-#define APP_US_KALMAN_R                  16.0f
 
 /* USER CODE END PD */
 
@@ -58,73 +47,17 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-static uint32_t heartbeat_tick = 0U;
-static uint32_t us_log_tick = 0U;
-static UltrasonicManager_t ultrasonic_manager;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-static void App_LogUltrasonicSummary(const char *tag);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static void App_UartRawPrint(const char *text)
-{
-  uint16_t len;
-
-  if (text == NULL)
-  {
-    return;
-  }
-
-  len = (uint16_t)strlen(text);
-  (void)HAL_UART_Transmit(&huart1, (uint8_t *)text, len, 100U);
-}
-
-static void App_LogUltrasonicSummary(const char *tag)
-{
-  const UltrasonicReading_t *left = UltrasonicManager_GetReading(&ultrasonic_manager, ULTRASONIC_SENSOR_LEFT);
-  const UltrasonicReading_t *mid = UltrasonicManager_GetReading(&ultrasonic_manager, ULTRASONIC_SENSOR_MID);
-  const UltrasonicReading_t *right = UltrasonicManager_GetReading(&ultrasonic_manager, ULTRASONIC_SENSOR_RIGHT);
-  uint8_t echo_l = (HAL_GPIO_ReadPin(US_LEFT_ECHO_GPIO_Port, US_LEFT_ECHO_Pin) == GPIO_PIN_SET) ? 1U : 0U;
-  uint8_t echo_m = (HAL_GPIO_ReadPin(US_MID_ECHO_GPIO_Port, US_MID_ECHO_Pin) == GPIO_PIN_SET) ? 1U : 0U;
-  uint8_t echo_r = (HAL_GPIO_ReadPin(US_RIGHT_ECHO_GPIO_Port, US_RIGHT_ECHO_Pin) == GPIO_PIN_SET) ? 1U : 0U;
-
-  if ((left == NULL) || (mid == NULL) || (right == NULL))
-  {
-    return;
-  }
-
-#if (APP_US_DEBUG_STATUS != 0U)
-  UartLog_PrintTimestamped(
-    tag,
-    "US cm L=%u(raw=%u,%s) M=%u(raw=%u,%s) R=%u(raw=%u,%s) echo=%u,%u,%u\r\n",
-    (unsigned int)left->distance_cm,
-    (unsigned int)left->raw_distance_cm,
-    UltrasonicManager_StatusName(left->status),
-    (unsigned int)mid->distance_cm,
-    (unsigned int)mid->raw_distance_cm,
-    UltrasonicManager_StatusName(mid->status),
-    (unsigned int)right->distance_cm,
-    (unsigned int)right->raw_distance_cm,
-    UltrasonicManager_StatusName(right->status),
-    (unsigned int)echo_l,
-    (unsigned int)echo_m,
-    (unsigned int)echo_r);
-#else
-  UartLog_PrintTimestamped(
-    tag,
-    "US cm L=%u M=%u R=%u\r\n",
-    (unsigned int)left->distance_cm,
-    (unsigned int)mid->distance_cm,
-    (unsigned int)right->distance_cm);
-#endif
-}
 
 /* USER CODE END 0 */
 
@@ -134,7 +67,6 @@ static void App_LogUltrasonicSummary(const char *tag)
   */
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -162,28 +94,7 @@ int main(void)
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  UartLog_Init(&huart1);
-  UartLog_SetEnabled(1U);
-  App_UartRawPrint("\r\n[RAW] UART1 ready @115200\r\n");
-  UartLog_Print("\r\n\r\n=== SUMO ROBOT APP BOOT ===\r\n");
-
-  heartbeat_tick = HAL_GetTick();
-  us_log_tick = heartbeat_tick;
-
-  UltrasonicManager_InitDefault(&ultrasonic_manager, &htim1);
-  ultrasonic_manager.config.echo_rise_timeout_us = APP_US_ECHO_RISE_TIMEOUT_US;
-  ultrasonic_manager.config.echo_fall_timeout_us = APP_US_ECHO_FALL_TIMEOUT_US;
-  ultrasonic_manager.config.inter_sensor_gap_us = APP_US_INTER_SENSOR_GAP_US;
-  UltrasonicManager_SetKalman(&ultrasonic_manager, 1U, APP_US_KALMAN_Q, APP_US_KALMAN_R);
-  if (UltrasonicManager_Start(&ultrasonic_manager) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  UartLog_PrintTimestamped(
-    "INIT",
-    "Ultrasonic read ready (LEFT/MID/RIGHT, fast profile: gap=%uus, kalman=ON)\r\n",
-    (unsigned int)APP_US_INTER_SENSOR_GAP_US);
-
+  AppMain_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -193,23 +104,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    uint32_t now = HAL_GetTick();
-    (void)UltrasonicManager_Update(&ultrasonic_manager, now);
-
-    if ((now - us_log_tick) >= APP_US_LOG_MS)
-    {
-      us_log_tick = now;
-      App_LogUltrasonicSummary("US");
-    }
-
-    if ((now - heartbeat_tick) >= APP_HEARTBEAT_LOG_MS)
-    {
-      heartbeat_tick = now;
-      App_LogUltrasonicSummary("HB");
-      App_UartRawPrint("[RAW] heartbeat\r\n");
-    }
+    AppMain_Loop();
+    /* USER CODE END 3 */
   }
-  /* USER CODE END 3 */
 }
 
 /**
@@ -246,8 +143,8 @@ void SystemClock_Config(void)
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+                              | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
@@ -259,10 +156,6 @@ void SystemClock_Config(void)
   }
 }
 
-/* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
-
 /**
   * @brief  This function is executed in case of error occurrence.
   * @retval None
@@ -270,13 +163,13 @@ void SystemClock_Config(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)
   {
   }
   /* USER CODE END Error_Handler_Debug */
 }
+
 #ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
@@ -288,8 +181,7 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+

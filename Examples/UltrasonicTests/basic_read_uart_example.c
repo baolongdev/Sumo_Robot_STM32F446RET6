@@ -5,8 +5,8 @@
  */
 
 /* USER CODE BEGIN Includes */
-#include "ultrasonic_manager.h"
-#include "uart_log.h"
+#include "modules/sensors/ultrasonic_manager.h"
+#include "modules/logging/uart_log.h"
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN PD */
@@ -86,3 +86,4 @@ UartLog_PrintTimestamped("INIT", "US basic ready (kalman=ON)\\r\\n");
   }
 }
 /* USER CODE END 3 */
+

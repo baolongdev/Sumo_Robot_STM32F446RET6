@@ -7,7 +7,7 @@
   */
 /* USER CODE END Header */
 
-#include "led_manager.h"
+#include "modules/control/led_manager.h"
 
 #define LED_BLINK_SLOW_PERIOD_MS      700U
 #define LED_BLINK_FAST_PERIOD_MS      150U
@@ -117,3 +117,4 @@ const char *LedManager_ModeName(LedMode_t mode)
       return "UNKNOWN";
   }
 }
+

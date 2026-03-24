@@ -7,8 +7,8 @@
  */
 
 /* USER CODE BEGIN Includes */
-#include "line_sensor.h"
-#include "uart_log.h"
+#include "modules/sensors/line_sensor.h"
+#include "modules/logging/uart_log.h"
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN PD */
@@ -63,4 +63,5 @@ LineSensor_Init(&line_sensor, &hi2c1, LINE_SENSOR_DEFAULT_ADDR_7BIT);
 LineSensor_SetTimeout(&line_sensor, 100U);
 App_DetectLineSensorAddress();
 /* USER CODE END 2 */
+
 
