@@ -26,7 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
-#include "line_sensor.h"
+#include "ultrasonic_manager.h"
 #include "uart_log.h"
 
 /* USER CODE END Includes */
@@ -39,10 +39,14 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define APP_HEARTBEAT_LOG_MS             2000U
-#define APP_LINE_POLL_MS                 50U
-#define APP_I2C_SCAN_START_ADDR          0x08U
-#define APP_I2C_SCAN_END_ADDR            0x77U
-#define APP_LINE_BLACK_ACTIVE_LOW        1U
+#define APP_US_LOG_MS                    120U
+#define APP_US_DEBUG_STATUS              1U
+
+#define APP_US_ECHO_RISE_TIMEOUT_US      3000U
+#define APP_US_ECHO_FALL_TIMEOUT_US      25000U
+#define APP_US_INTER_SENSOR_GAP_US       3000U
+#define APP_US_KALMAN_Q                  12.0f
+#define APP_US_KALMAN_R                  16.0f
 
 /* USER CODE END PD */
 
@@ -55,16 +59,15 @@
 
 /* USER CODE BEGIN PV */
 static uint32_t heartbeat_tick = 0U;
-static LineSensor_t line_sensor;
+static uint32_t us_log_tick = 0U;
+static UltrasonicManager_t ultrasonic_manager;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-static void App_ApplyLineToLed(uint8_t has_line);
-static void App_DetectLineSensorAddress(void);
-static void App_LogLineSnapshot(const char *tag, const LineSensorSnapshot_t *snapshot);
+static void App_LogUltrasonicSummary(const char *tag);
 
 /* USER CODE END PFP */
 
@@ -83,75 +86,44 @@ static void App_UartRawPrint(const char *text)
   (void)HAL_UART_Transmit(&huart1, (uint8_t *)text, len, 100U);
 }
 
-static void App_ApplyLineToLed(uint8_t has_line)
+static void App_LogUltrasonicSummary(const char *tag)
 {
-  HAL_GPIO_WritePin(LED_STATUS_GPIO_Port, LED_STATUS_Pin, (has_line != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-}
+  const UltrasonicReading_t *left = UltrasonicManager_GetReading(&ultrasonic_manager, ULTRASONIC_SENSOR_LEFT);
+  const UltrasonicReading_t *mid = UltrasonicManager_GetReading(&ultrasonic_manager, ULTRASONIC_SENSOR_MID);
+  const UltrasonicReading_t *right = UltrasonicManager_GetReading(&ultrasonic_manager, ULTRASONIC_SENSOR_RIGHT);
+  uint8_t echo_l = (HAL_GPIO_ReadPin(US_LEFT_ECHO_GPIO_Port, US_LEFT_ECHO_Pin) == GPIO_PIN_SET) ? 1U : 0U;
+  uint8_t echo_m = (HAL_GPIO_ReadPin(US_MID_ECHO_GPIO_Port, US_MID_ECHO_Pin) == GPIO_PIN_SET) ? 1U : 0U;
+  uint8_t echo_r = (HAL_GPIO_ReadPin(US_RIGHT_ECHO_GPIO_Port, US_RIGHT_ECHO_Pin) == GPIO_PIN_SET) ? 1U : 0U;
 
-static void App_DetectLineSensorAddress(void)
-{
-  uint8_t found_addr = 0U;
-  HAL_StatusTypeDef ping_status = LineSensor_Ping(&line_sensor, 3U);
-
-  if (ping_status == HAL_OK)
-  {
-    UartLog_PrintTimestamped(
-      "LINE",
-      "I2C device ACK at configured addr=0x%02X\r\n",
-      (unsigned int)LineSensor_GetAddress7bit(&line_sensor));
-    return;
-  }
-
-  UartLog_PrintTimestamped(
-    "LINE",
-    "No ACK at addr=0x%02X, scanning I2C bus...\r\n",
-    (unsigned int)LineSensor_GetAddress7bit(&line_sensor));
-
-  if (LineSensor_ScanFirst(
-        &line_sensor,
-        (uint8_t)APP_I2C_SCAN_START_ADDR,
-        (uint8_t)APP_I2C_SCAN_END_ADDR,
-        &found_addr) != 0U)
-  {
-    UartLog_PrintTimestamped(
-      "LINE",
-      "Detected I2C device at addr=0x%02X (updated)\r\n",
-      (unsigned int)found_addr);
-  }
-  else
-  {
-    UartLog_PrintTimestamped(
-      "LINE",
-      "No I2C device found in range 0x%02X..0x%02X (check wiring, power, pull-up)\r\n",
-      (unsigned int)APP_I2C_SCAN_START_ADDR,
-      (unsigned int)APP_I2C_SCAN_END_ADDR);
-  }
-}
-
-static void App_LogLineSnapshot(const char *tag, const LineSensorSnapshot_t *snapshot)
-{
-  uint8_t raw_nibble;
-
-  if (snapshot == NULL)
+  if ((left == NULL) || (mid == NULL) || (right == NULL))
   {
     return;
   }
 
-  raw_nibble = (uint8_t)(snapshot->raw_data & 0x0FU);
-
+#if (APP_US_DEBUG_STATUS != 0U)
   UartLog_PrintTimestamped(
     tag,
-    "raw=0x%02X raw4=0x%X sensor=0x%X line=%u,%u,%u,%u has_line=%u status=%s ev=0x%02X\r\n",
-    (unsigned int)snapshot->raw_data,
-    (unsigned int)raw_nibble,
-    (unsigned int)snapshot->sensor_nibble,
-    (unsigned int)snapshot->line3,
-    (unsigned int)snapshot->line2,
-    (unsigned int)snapshot->line1,
-    (unsigned int)snapshot->line0,
-    (unsigned int)snapshot->has_line,
-    LineSensor_StatusName(snapshot->status),
-    (unsigned int)snapshot->event_flags);
+    "US cm L=%u(raw=%u,%s) M=%u(raw=%u,%s) R=%u(raw=%u,%s) echo=%u,%u,%u\r\n",
+    (unsigned int)left->distance_cm,
+    (unsigned int)left->raw_distance_cm,
+    UltrasonicManager_StatusName(left->status),
+    (unsigned int)mid->distance_cm,
+    (unsigned int)mid->raw_distance_cm,
+    UltrasonicManager_StatusName(mid->status),
+    (unsigned int)right->distance_cm,
+    (unsigned int)right->raw_distance_cm,
+    UltrasonicManager_StatusName(right->status),
+    (unsigned int)echo_l,
+    (unsigned int)echo_m,
+    (unsigned int)echo_r);
+#else
+  UartLog_PrintTimestamped(
+    tag,
+    "US cm L=%u M=%u R=%u\r\n",
+    (unsigned int)left->distance_cm,
+    (unsigned int)mid->distance_cm,
+    (unsigned int)right->distance_cm);
+#endif
 }
 
 /* USER CODE END 0 */
@@ -195,24 +167,22 @@ int main(void)
   App_UartRawPrint("\r\n[RAW] UART1 ready @115200\r\n");
   UartLog_Print("\r\n\r\n=== SUMO ROBOT APP BOOT ===\r\n");
 
-  LineSensor_Init(&line_sensor, &hi2c1, LINE_SENSOR_DEFAULT_ADDR_7BIT);
-#if (APP_LINE_BLACK_ACTIVE_LOW != 0U)
-  LineSensor_SetPolarity(&line_sensor, LINE_SENSOR_POLARITY_ACTIVE_LOW);
-#else
-  LineSensor_SetPolarity(&line_sensor, LINE_SENSOR_POLARITY_ACTIVE_HIGH);
-#endif
-  LineSensor_SetTimeout(&line_sensor, LINE_SENSOR_DEFAULT_TIMEOUT_MS);
-  LineSensor_SetPollInterval(&line_sensor, APP_LINE_POLL_MS);
-  App_DetectLineSensorAddress();
   heartbeat_tick = HAL_GetTick();
-  LineSensor_ResetScheduler(&line_sensor, heartbeat_tick);
-  App_ApplyLineToLed(0U);
+  us_log_tick = heartbeat_tick;
+
+  UltrasonicManager_InitDefault(&ultrasonic_manager, &htim1);
+  ultrasonic_manager.config.echo_rise_timeout_us = APP_US_ECHO_RISE_TIMEOUT_US;
+  ultrasonic_manager.config.echo_fall_timeout_us = APP_US_ECHO_FALL_TIMEOUT_US;
+  ultrasonic_manager.config.inter_sensor_gap_us = APP_US_INTER_SENSOR_GAP_US;
+  UltrasonicManager_SetKalman(&ultrasonic_manager, 1U, APP_US_KALMAN_Q, APP_US_KALMAN_R);
+  if (UltrasonicManager_Start(&ultrasonic_manager) != HAL_OK)
+  {
+    Error_Handler();
+  }
   UartLog_PrintTimestamped(
     "INIT",
-    "Line sensor ready (addr=0x%02X, poll=%lu ms, polarity=%s)\r\n",
-    (unsigned int)LineSensor_GetAddress7bit(&line_sensor),
-    (uint32_t)APP_LINE_POLL_MS,
-    LineSensor_PolarityName(LineSensor_GetPolarity(&line_sensor)));
+    "Ultrasonic read ready (LEFT/MID/RIGHT, fast profile: gap=%uus, kalman=ON)\r\n",
+    (unsigned int)APP_US_INTER_SENSOR_GAP_US);
 
   /* USER CODE END 2 */
 
@@ -224,38 +194,18 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     uint32_t now = HAL_GetTick();
-    const LineSensorSnapshot_t *snapshot;
+    (void)UltrasonicManager_Update(&ultrasonic_manager, now);
 
-    if (LineSensor_Update(&line_sensor, now) != 0U)
+    if ((now - us_log_tick) >= APP_US_LOG_MS)
     {
-      snapshot = LineSensor_GetSnapshot(&line_sensor);
-
-      if (snapshot != NULL)
-      {
-        if (snapshot->status == HAL_OK)
-        {
-          App_ApplyLineToLed(snapshot->has_line);
-        }
-        else
-        {
-          App_ApplyLineToLed(0U);
-        }
-
-        if ((snapshot->event_flags & (LINE_SENSOR_EVENT_STATUS_CHANGED |
-                                      LINE_SENSOR_EVENT_STATE_CHANGED |
-                                      LINE_SENSOR_EVENT_LINE_ENTER |
-                                      LINE_SENSOR_EVENT_LINE_EXIT)) != 0U)
-        {
-          App_LogLineSnapshot("LINE", snapshot);
-        }
-      }
+      us_log_tick = now;
+      App_LogUltrasonicSummary("US");
     }
 
     if ((now - heartbeat_tick) >= APP_HEARTBEAT_LOG_MS)
     {
       heartbeat_tick = now;
-      snapshot = LineSensor_GetSnapshot(&line_sensor);
-      App_LogLineSnapshot("HB", snapshot);
+      App_LogUltrasonicSummary("HB");
       App_UartRawPrint("[RAW] heartbeat\r\n");
     }
   }
@@ -285,7 +235,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 101;
+  RCC_OscInitStruct.PLL.PLLN = 72;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 2;
   RCC_OscInitStruct.PLL.PLLR = 2;
@@ -300,10 +250,10 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
