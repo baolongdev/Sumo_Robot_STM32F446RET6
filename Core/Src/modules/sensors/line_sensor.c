@@ -7,7 +7,7 @@
   */
 /* USER CODE END Header */
 
-#include "line_sensor.h"
+#include "modules/sensors/line_sensor.h"
 
 static uint8_t LineSensor_ApplyPolarity(uint8_t nibble, LineSensorPolarity_t polarity)
 {
@@ -359,3 +359,4 @@ const char *LineSensor_StatusName(HAL_StatusTypeDef status)
       return "UNKNOWN";
   }
 }
+

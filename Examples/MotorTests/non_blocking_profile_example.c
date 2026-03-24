@@ -5,7 +5,7 @@
  */
 
 /* USER CODE BEGIN Includes */
-#include "motor.h"
+#include "modules/control/motor.h"
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN PV */
@@ -42,3 +42,4 @@ if (MotorController_ProfileIsBusy(&motor_controller) == 0U)
   }
 }
 /* USER CODE END 3 */
+

@@ -7,7 +7,7 @@
  */
 
 /* USER CODE BEGIN Includes */
-#include "motor.h"
+#include "modules/control/motor.h"
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN PV */
@@ -75,3 +75,4 @@ MotorController_UpdateCurrentFeedback(&motor_controller, App_ReadLeftCurrentMa()
 
 MotorController_Update(&motor_controller);
 /* USER CODE END 3 */
+

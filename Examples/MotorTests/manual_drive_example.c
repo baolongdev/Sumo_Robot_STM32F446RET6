@@ -4,7 +4,7 @@
  */
 
 /* USER CODE BEGIN Includes */
-#include "motor.h"
+#include "modules/control/motor.h"
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN PV */
@@ -84,3 +84,4 @@ switch (phase)
     break;
 }
 /* USER CODE END 3 */
+

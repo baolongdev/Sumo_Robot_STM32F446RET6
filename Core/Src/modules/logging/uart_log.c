@@ -7,7 +7,7 @@
   */
 /* USER CODE END Header */
 
-#include "uart_log.h"
+#include "modules/logging/uart_log.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -122,3 +122,4 @@ void UartLog_PrintTimestamped(const char *tag, const char *fmt, ...)
 
   UartLog_WriteRaw(buffer, (uint16_t)(prefix_len + written));
 }
+

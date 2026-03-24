@@ -5,8 +5,8 @@
  */
 
 /* USER CODE BEGIN Includes */
-#include "line_sensor.h"
-#include "uart_log.h"
+#include "modules/sensors/line_sensor.h"
+#include "modules/logging/uart_log.h"
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN PD */
@@ -76,4 +76,5 @@ LineSensor_ResetScheduler(&line_sensor, HAL_GetTick());
   }
 }
 /* USER CODE END 3 */
+
 

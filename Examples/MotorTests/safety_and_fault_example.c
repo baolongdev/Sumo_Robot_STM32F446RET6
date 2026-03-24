@@ -4,7 +4,7 @@
  */
 
 /* USER CODE BEGIN Includes */
-#include "motor.h"
+#include "modules/control/motor.h"
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN PV */
@@ -74,3 +74,4 @@ else
   HAL_GPIO_WritePin(LED_STATUS_GPIO_Port, LED_STATUS_Pin, GPIO_PIN_RESET);
 }
 /* USER CODE END 3 */
+
