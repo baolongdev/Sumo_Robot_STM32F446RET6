@@ -26,7 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
-#include "led_manager.h"
+#include "line_sensor.h"
 #include "uart_log.h"
 
 /* USER CODE END Includes */
@@ -39,12 +39,10 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define APP_HEARTBEAT_LOG_MS             2000U
-#define APP_LED_TEST_FAST_MS             3500U
-#define APP_LED_TEST_SLOW_MS             3500U
-#define APP_LED_TEST_LONG_MS             5000U
-#define APP_LED_TEST_ON_HOLD_MS          1800U
-#define APP_LED_TEST_OFF_HOLD_MS         1800U
-#define APP_LED_CUSTOM_LONG_BLINK_MS     1200U
+#define APP_LINE_POLL_MS                 50U
+#define APP_I2C_SCAN_START_ADDR          0x08U
+#define APP_I2C_SCAN_END_ADDR            0x77U
+#define APP_LINE_BLACK_ACTIVE_LOW        1U
 
 /* USER CODE END PD */
 
@@ -57,15 +55,16 @@
 
 /* USER CODE BEGIN PV */
 static uint32_t heartbeat_tick = 0U;
-static uint32_t led_test_tick = 0U;
-static uint8_t led_test_step = 0U;
+static LineSensor_t line_sensor;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-static void App_LedTestEnterStep(uint8_t step);
+static void App_ApplyLineToLed(uint8_t has_line);
+static void App_DetectLineSensorAddress(void);
+static void App_LogLineSnapshot(const char *tag, const LineSensorSnapshot_t *snapshot);
 
 /* USER CODE END PFP */
 
@@ -84,35 +83,75 @@ static void App_UartRawPrint(const char *text)
   (void)HAL_UART_Transmit(&huart1, (uint8_t *)text, len, 100U);
 }
 
-static void App_LedTestEnterStep(uint8_t step)
+static void App_ApplyLineToLed(uint8_t has_line)
 {
-  led_test_step = step;
-  led_test_tick = HAL_GetTick();
+  HAL_GPIO_WritePin(LED_STATUS_GPIO_Port, LED_STATUS_Pin, (has_line != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
 
-  switch (step)
+static void App_DetectLineSensorAddress(void)
+{
+  uint8_t found_addr = 0U;
+  HAL_StatusTypeDef ping_status = LineSensor_Ping(&line_sensor, 3U);
+
+  if (ping_status == HAL_OK)
   {
-    case 0U:
-      LedManager_SetMode(LED_MODE_BLINK_FAST);
-      UartLog_PrintTimestamped("LED", "TEST step=FAST_BLINK\r\n");
-      break;
-    case 1U:
-      LedManager_SetMode(LED_MODE_BLINK_SLOW);
-      UartLog_PrintTimestamped("LED", "TEST step=SLOW_BLINK\r\n");
-      break;
-    case 2U:
-      LedManager_SetCustomBlink(APP_LED_CUSTOM_LONG_BLINK_MS);
-      LedManager_SetMode(LED_MODE_BLINK_CUSTOM);
-      UartLog_PrintTimestamped("LED", "TEST step=LONG_BLINK(%lu ms)\r\n", (uint32_t)APP_LED_CUSTOM_LONG_BLINK_MS);
-      break;
-    case 3U:
-      LedManager_SetMode(LED_MODE_ON);
-      UartLog_PrintTimestamped("LED", "TEST step=ON_HOLD\r\n");
-      break;
-    default:
-      LedManager_SetMode(LED_MODE_OFF);
-      UartLog_PrintTimestamped("LED", "TEST step=OFF_HOLD\r\n");
-      break;
+    UartLog_PrintTimestamped(
+      "LINE",
+      "I2C device ACK at configured addr=0x%02X\r\n",
+      (unsigned int)LineSensor_GetAddress7bit(&line_sensor));
+    return;
   }
+
+  UartLog_PrintTimestamped(
+    "LINE",
+    "No ACK at addr=0x%02X, scanning I2C bus...\r\n",
+    (unsigned int)LineSensor_GetAddress7bit(&line_sensor));
+
+  if (LineSensor_ScanFirst(
+        &line_sensor,
+        (uint8_t)APP_I2C_SCAN_START_ADDR,
+        (uint8_t)APP_I2C_SCAN_END_ADDR,
+        &found_addr) != 0U)
+  {
+    UartLog_PrintTimestamped(
+      "LINE",
+      "Detected I2C device at addr=0x%02X (updated)\r\n",
+      (unsigned int)found_addr);
+  }
+  else
+  {
+    UartLog_PrintTimestamped(
+      "LINE",
+      "No I2C device found in range 0x%02X..0x%02X (check wiring, power, pull-up)\r\n",
+      (unsigned int)APP_I2C_SCAN_START_ADDR,
+      (unsigned int)APP_I2C_SCAN_END_ADDR);
+  }
+}
+
+static void App_LogLineSnapshot(const char *tag, const LineSensorSnapshot_t *snapshot)
+{
+  uint8_t raw_nibble;
+
+  if (snapshot == NULL)
+  {
+    return;
+  }
+
+  raw_nibble = (uint8_t)(snapshot->raw_data & 0x0FU);
+
+  UartLog_PrintTimestamped(
+    tag,
+    "raw=0x%02X raw4=0x%X sensor=0x%X line=%u,%u,%u,%u has_line=%u status=%s ev=0x%02X\r\n",
+    (unsigned int)snapshot->raw_data,
+    (unsigned int)raw_nibble,
+    (unsigned int)snapshot->sensor_nibble,
+    (unsigned int)snapshot->line3,
+    (unsigned int)snapshot->line2,
+    (unsigned int)snapshot->line1,
+    (unsigned int)snapshot->line0,
+    (unsigned int)snapshot->has_line,
+    LineSensor_StatusName(snapshot->status),
+    (unsigned int)snapshot->event_flags);
 }
 
 /* USER CODE END 0 */
@@ -156,11 +195,24 @@ int main(void)
   App_UartRawPrint("\r\n[RAW] UART1 ready @115200\r\n");
   UartLog_Print("\r\n\r\n=== SUMO ROBOT APP BOOT ===\r\n");
 
-  LedManager_Init();
-  LedManager_SetCustomBlink(APP_LED_CUSTOM_LONG_BLINK_MS);
+  LineSensor_Init(&line_sensor, &hi2c1, LINE_SENSOR_DEFAULT_ADDR_7BIT);
+#if (APP_LINE_BLACK_ACTIVE_LOW != 0U)
+  LineSensor_SetPolarity(&line_sensor, LINE_SENSOR_POLARITY_ACTIVE_LOW);
+#else
+  LineSensor_SetPolarity(&line_sensor, LINE_SENSOR_POLARITY_ACTIVE_HIGH);
+#endif
+  LineSensor_SetTimeout(&line_sensor, LINE_SENSOR_DEFAULT_TIMEOUT_MS);
+  LineSensor_SetPollInterval(&line_sensor, APP_LINE_POLL_MS);
+  App_DetectLineSensorAddress();
   heartbeat_tick = HAL_GetTick();
-  App_LedTestEnterStep(0U);
-  UartLog_PrintTimestamped("INIT", "LED test sequencer started\r\n");
+  LineSensor_ResetScheduler(&line_sensor, heartbeat_tick);
+  App_ApplyLineToLed(0U);
+  UartLog_PrintTimestamped(
+    "INIT",
+    "Line sensor ready (addr=0x%02X, poll=%lu ms, polarity=%s)\r\n",
+    (unsigned int)LineSensor_GetAddress7bit(&line_sensor),
+    (uint32_t)APP_LINE_POLL_MS,
+    LineSensor_PolarityName(LineSensor_GetPolarity(&line_sensor)));
 
   /* USER CODE END 2 */
 
@@ -172,53 +224,38 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     uint32_t now = HAL_GetTick();
-    LedManager_Update();
+    const LineSensorSnapshot_t *snapshot;
 
-    if (led_test_step == 0U)
+    if (LineSensor_Update(&line_sensor, now) != 0U)
     {
-      if ((now - led_test_tick) >= APP_LED_TEST_FAST_MS)
+      snapshot = LineSensor_GetSnapshot(&line_sensor);
+
+      if (snapshot != NULL)
       {
-        App_LedTestEnterStep(1U);
-      }
-    }
-    else if (led_test_step == 1U)
-    {
-      if ((now - led_test_tick) >= APP_LED_TEST_SLOW_MS)
-      {
-        App_LedTestEnterStep(2U);
-      }
-    }
-    else if (led_test_step == 2U)
-    {
-      if ((now - led_test_tick) >= APP_LED_TEST_LONG_MS)
-      {
-        App_LedTestEnterStep(3U);
-      }
-    }
-    else if (led_test_step == 3U)
-    {
-      if ((now - led_test_tick) >= APP_LED_TEST_ON_HOLD_MS)
-      {
-        App_LedTestEnterStep(4U);
-      }
-    }
-    else
-    {
-      if ((now - led_test_tick) >= APP_LED_TEST_OFF_HOLD_MS)
-      {
-        App_LedTestEnterStep(0U);
+        if (snapshot->status == HAL_OK)
+        {
+          App_ApplyLineToLed(snapshot->has_line);
+        }
+        else
+        {
+          App_ApplyLineToLed(0U);
+        }
+
+        if ((snapshot->event_flags & (LINE_SENSOR_EVENT_STATUS_CHANGED |
+                                      LINE_SENSOR_EVENT_STATE_CHANGED |
+                                      LINE_SENSOR_EVENT_LINE_ENTER |
+                                      LINE_SENSOR_EVENT_LINE_EXIT)) != 0U)
+        {
+          App_LogLineSnapshot("LINE", snapshot);
+        }
       }
     }
 
     if ((now - heartbeat_tick) >= APP_HEARTBEAT_LOG_MS)
     {
       heartbeat_tick = now;
-      UartLog_PrintTimestamped(
-        "HB",
-        "uptime=%lu ms, LED=%s, step=%u\r\n",
-        now,
-        LedManager_ModeName(LedManager_GetMode()),
-        led_test_step);
+      snapshot = LineSensor_GetSnapshot(&line_sensor);
+      App_LogLineSnapshot("HB", snapshot);
       App_UartRawPrint("[RAW] heartbeat\r\n");
     }
   }
