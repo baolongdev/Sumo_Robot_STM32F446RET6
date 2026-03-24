@@ -1,0 +1,13 @@
+# Build output
+Debug/
+Release/
+
+# STM32 toolchain artifacts
+*.o
+*.d
+*.su
+*.elf
+*.map
+*.list
+*.bin
+*.hex
