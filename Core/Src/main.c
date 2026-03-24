@@ -25,6 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "motor.h"
 
 /* USER CODE END Includes */
 
@@ -35,6 +36,15 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define TEST_PROFILE_TARGET_PERCENT      55U
+#define TEST_PROFILE_RAMP_MS             1000U
+#define TEST_PROFILE_RUN_MS              1400U
+#define TEST_PROFILE_BRAKE_MS            220U
+#define TEST_PIVOT_PERCENT               40U
+#define TEST_PIVOT_MS                    650U
+#define TEST_RETREAT_PERCENT             50U
+#define TEST_RETREAT_MS                  800U
+#define TEST_PAUSE_MS                    700U
 
 /* USER CODE END PD */
 
@@ -46,6 +56,11 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+static MotorController_t motor_controller;
+static uint8_t test_phase = 0U;
+static uint32_t phase_tick = 0U;
+static uint32_t led_tick = 0U;
+static uint8_t estop_latched = 0U;
 
 /* USER CODE END PV */
 
@@ -57,6 +72,35 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static uint8_t App_IsBtnB0PressedEdge(void)
+{
+  static uint8_t last_raw = 1U;
+  static uint8_t stable = 1U;
+  static uint32_t stable_tick = 0U;
+  uint8_t raw = (HAL_GPIO_ReadPin(BTN_B0_GPIO_Port, BTN_B0_Pin) == GPIO_PIN_RESET) ? 1U : 0U;
+  uint8_t edge = 0U;
+  uint32_t now = HAL_GetTick();
+
+  if (raw != last_raw)
+  {
+    last_raw = raw;
+    stable_tick = now;
+  }
+
+  if ((now - stable_tick) >= 30U)
+  {
+    if (stable != raw)
+    {
+      stable = raw;
+      if (stable != 0U)
+      {
+        edge = 1U;
+      }
+    }
+  }
+
+  return edge;
+}
 
 /* USER CODE END 0 */
 
@@ -94,6 +138,22 @@ int main(void)
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  MotorController_InitDefault(&motor_controller);
+  /* Set 1 if any wheel direction is physically reversed on your chassis. */
+  MotorController_SetInversion(&motor_controller, 0U, 0U);
+  MotorController_SetStopMode(&motor_controller, MOTOR_STOP_BRAKE);
+  MotorController_SetDriveMode(&motor_controller, MOTOR_DRIVE_MODE_ATTACK);
+  MotorController_SetCommandTimeout(&motor_controller, 0U); /* disable watchdog while bench testing */
+  MotorController_SetDirectionSafety(&motor_controller, 80U, 40U);
+  MotorController_SetMinDrivePercent(&motor_controller, 18U, 10U);
+  if (MotorController_Start(&motor_controller) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  MotorController_Stop(&motor_controller);
+  test_phase = 0U;
+  phase_tick = HAL_GetTick();
+  led_tick = HAL_GetTick();
 
   /* USER CODE END 2 */
 
@@ -104,6 +164,105 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    if (App_IsBtnB0PressedEdge() != 0U)
+    {
+      if (estop_latched == 0U)
+      {
+        MotorController_EmergencyStop(&motor_controller);
+        estop_latched = 1U;
+      }
+      else
+      {
+        MotorController_EmergencyRelease(&motor_controller);
+        MotorController_ClearFaults(&motor_controller, MOTOR_FAULT_ESTOP);
+        MotorController_Stop(&motor_controller);
+        estop_latched = 0U;
+        test_phase = 0U;
+        phase_tick = HAL_GetTick();
+      }
+    }
+
+    MotorController_Update(&motor_controller);
+
+    if (MotorController_IsEmergencyStopped(&motor_controller) != 0U)
+    {
+      if ((HAL_GetTick() - led_tick) >= 120U)
+      {
+        HAL_GPIO_TogglePin(LED_STATUS_GPIO_Port, LED_STATUS_Pin);
+        led_tick = HAL_GetTick();
+      }
+      continue;
+    }
+
+    if (MotorController_GetFaults(&motor_controller) != MOTOR_FAULT_NONE)
+    {
+      HAL_GPIO_WritePin(LED_STATUS_GPIO_Port, LED_STATUS_Pin, GPIO_PIN_SET);
+      continue;
+    }
+    else
+    {
+      if ((HAL_GetTick() - led_tick) >= 500U)
+      {
+        HAL_GPIO_TogglePin(LED_STATUS_GPIO_Port, LED_STATUS_Pin);
+        led_tick = HAL_GetTick();
+      }
+    }
+
+    switch (test_phase)
+    {
+      case 0:
+        MotorController_ProfileStart(
+          &motor_controller,
+          TEST_PROFILE_TARGET_PERCENT,
+          TEST_PROFILE_RAMP_MS,
+          TEST_PROFILE_RUN_MS,
+          TEST_PROFILE_BRAKE_MS);
+        test_phase = 1U;
+        break;
+
+      case 1:
+        if (MotorController_ProfileIsBusy(&motor_controller) == 0U)
+        {
+          MotorController_PivotLeft(&motor_controller, TEST_PIVOT_PERCENT);
+          phase_tick = HAL_GetTick();
+          test_phase = 2U;
+        }
+        break;
+
+      case 2:
+        if ((HAL_GetTick() - phase_tick) >= TEST_PIVOT_MS)
+        {
+          MotorController_PivotRight(&motor_controller, TEST_PIVOT_PERCENT);
+          phase_tick = HAL_GetTick();
+          test_phase = 3U;
+        }
+        break;
+
+      case 3:
+        if ((HAL_GetTick() - phase_tick) >= TEST_PIVOT_MS)
+        {
+          MotorController_Retreat(&motor_controller, TEST_RETREAT_PERCENT);
+          phase_tick = HAL_GetTick();
+          test_phase = 4U;
+        }
+        break;
+
+      case 4:
+        if ((HAL_GetTick() - phase_tick) >= TEST_RETREAT_MS)
+        {
+          MotorController_Stop(&motor_controller);
+          phase_tick = HAL_GetTick();
+          test_phase = 5U;
+        }
+        break;
+
+      default:
+        if ((HAL_GetTick() - phase_tick) >= TEST_PAUSE_MS)
+        {
+          test_phase = 0U;
+        }
+        break;
+    }
   }
   /* USER CODE END 3 */
 }
