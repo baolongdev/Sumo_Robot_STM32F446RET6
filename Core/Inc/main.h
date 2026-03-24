@@ -59,18 +59,18 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define BTN_C13_Pin GPIO_PIN_13
 #define BTN_C13_GPIO_Port GPIOC
-#define MOTOR_LEFT_PWM_Pin GPIO_PIN_1
-#define MOTOR_LEFT_PWM_GPIO_Port GPIOC
-#define MOTOR_RIGHT_PWM_Pin GPIO_PIN_2
-#define MOTOR_RIGHT_PWM_GPIO_Port GPIOC
+#define MOTOR_LEFT_R_EN_Pin GPIO_PIN_1
+#define MOTOR_LEFT_R_EN_GPIO_Port GPIOC
+#define MOTOR_RIGHT_R_EN_Pin GPIO_PIN_2
+#define MOTOR_RIGHT_R_EN_GPIO_Port GPIOC
 #define MOTOR_LEFT_L_EN_Pin GPIO_PIN_3
 #define MOTOR_LEFT_L_EN_GPIO_Port GPIOC
 #define MOTOR_RIGHT_L_EN_Pin GPIO_PIN_0
 #define MOTOR_RIGHT_L_EN_GPIO_Port GPIOA
-#define MOTOR_LEFT_R_EN_Pin GPIO_PIN_1
-#define MOTOR_LEFT_R_EN_GPIO_Port GPIOA
-#define MOTOR_RIGHT_R_EN_Pin GPIO_PIN_2
-#define MOTOR_RIGHT_R_EN_GPIO_Port GPIOA
+#define MOTOR_LEFT_PWM_Pin GPIO_PIN_1
+#define MOTOR_LEFT_PWM_GPIO_Port GPIOA
+#define MOTOR_RIGHT_PWM_Pin GPIO_PIN_2
+#define MOTOR_RIGHT_PWM_GPIO_Port GPIOA
 #define US_RIGHT_TRIG_Pin GPIO_PIN_3
 #define US_RIGHT_TRIG_GPIO_Port GPIOA
 #define US_RIGHT_ECHO_Pin GPIO_PIN_4
