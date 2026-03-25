@@ -42,7 +42,7 @@ typedef struct
   uint32_t tick_ms;
   uint8_t raw_data;
   uint8_t sensor_nibble;
-  uint8_t has_line;
+  uint8_t has_line; /* 1 when all 4 sensors read black (0,0,0,0). */
   uint8_t line3;
   uint8_t line2;
   uint8_t line1;
