@@ -32,6 +32,12 @@ static void LineSensor_FillBits(LineSensorSnapshot_t *snapshot)
   snapshot->line0 = (uint8_t)(snapshot->sensor_nibble & 0x01U);
 }
 
+static uint8_t LineSensor_IsAllBlack(uint8_t sensor_nibble)
+{
+  /* Convention: bit 1 = white, bit 0 = black. All black => nibble == 0x0. */
+  return ((sensor_nibble & 0x0FU) == 0U) ? 1U : 0U;
+}
+
 void LineSensor_SetAddress7bit(LineSensor_t *ctx, uint8_t device_addr_7bit)
 {
   if (ctx == NULL)
@@ -259,7 +265,7 @@ uint8_t LineSensor_Update(LineSensor_t *ctx, uint32_t now_ms)
   {
     ctx->snapshot.raw_data = ctx->raw_data;
     ctx->snapshot.sensor_nibble = ctx->sensor_nibble;
-    ctx->snapshot.has_line = (ctx->sensor_nibble != 0U) ? 1U : 0U;
+    ctx->snapshot.has_line = LineSensor_IsAllBlack(ctx->sensor_nibble);
     LineSensor_FillBits(&ctx->snapshot);
 
     if (ctx->snapshot.sensor_nibble != prev_sensor_nibble)
@@ -307,7 +313,7 @@ uint8_t LineSensor_HasLine(const LineSensor_t *ctx)
     return 0U;
   }
 
-  return (ctx->sensor_nibble != 0U) ? 1U : 0U;
+  return LineSensor_IsAllBlack(ctx->sensor_nibble);
 }
 
 HAL_StatusTypeDef LineSensor_GetLastStatus(const LineSensor_t *ctx)

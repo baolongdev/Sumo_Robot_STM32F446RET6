@@ -194,7 +194,7 @@ void UltrasonicManager_InitDefault(UltrasonicManager_t *ctx, TIM_HandleTypeDef *
   ctx->config.echo_rise_timeout_us = 5000U;
   ctx->config.echo_fall_timeout_us = 45000U;
   ctx->config.inter_sensor_gap_us = 30000U;
-  ctx->filter.enabled = 1U;
+  ctx->filter.enabled = 0U;
   ctx->filter.q = 2.5f;
   ctx->filter.r = 40.0f;
 
