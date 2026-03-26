@@ -1,3 +1,3 @@
 # Drivers
 
-Driver abstraction headers can be placed here when needed.
+Thư mục dùng để đặt các header abstraction cho driver khi cần.

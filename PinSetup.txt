@@ -5,6 +5,8 @@ STATUS & INPUT
 - LED_STATUS: PB2        (OUTPUT)
 - BTN_B0: PB0            (INPUT)
 - BTN_C13: PC13          (INPUT)
+- SPEAKER_TX: PB10
+- SPEAKER_RX: PC5
 
 ---------------------------
 LINE SENSOR (I2C)

@@ -83,10 +83,14 @@ void Error_Handler(void);
 #define US_LEFT_TRIG_GPIO_Port GPIOA
 #define US_LEFT_ECHO_Pin GPIO_PIN_4
 #define US_LEFT_ECHO_GPIO_Port GPIOC
+#define SPEAKER_RX_Pin GPIO_PIN_5
+#define SPEAKER_RX_GPIO_Port GPIOC
 #define BTN_B0_Pin GPIO_PIN_0
 #define BTN_B0_GPIO_Port GPIOB
 #define LED_STATUS_Pin GPIO_PIN_2
 #define LED_STATUS_GPIO_Port GPIOB
+#define SPEAKER_TX_Pin GPIO_PIN_10
+#define SPEAKER_TX_GPIO_Port GPIOB
 #define LINE_SCL_Pin GPIO_PIN_6
 #define LINE_SCL_GPIO_Port GPIOB
 #define LINE_SDA_Pin GPIO_PIN_7

@@ -1,16 +1,16 @@
-# OOP Firmware Samples
+# Bộ mẫu firmware OOP
 
-Thu muc nay chua cac mau code theo huong class/module C++ cho project sumo robot.
+Thư mục này chứa các mẫu code theo hướng class/module C++ cho project sumo robot.
 
-## Files
+## Danh sách file
 
 - `unified_sensor_polling_example.cpp`
-  - Mau gom `LineSensor` + `UltrasonicArray` qua `SensorManager`, log UART theo snapshot thong nhat.
+  - Mẫu gom `LineSensor` + `UltrasonicArray` qua `SensorManager`, log UART theo snapshot thống nhất.
 - `logger_throughput_ratelimit_example.cpp`
-  - Mau test `UartLogger` ring-buffer non-blocking, rate-limit va dropped counter.
+  - Mẫu test `UartLogger` ring-buffer non-blocking, rate-limit và dropped counter.
 
-## Luu y
+## Lưu ý
 
-- Day la doan code mau de copy vao module app (vi du `app_main.cpp`).
-- Runtime phai goi `UartLogger::instance().process()` trong loop de day TX interrupt.
-- Khong dung `HAL_Delay()` trong loop.
+- Đây là đoạn code mẫu để copy vào module app (ví dụ `app_main.cpp`).
+- Runtime phải gọi `UartLogger::instance().process()` trong loop để đẩy TX interrupt.
+- Không dùng `HAL_Delay()` trong loop.
