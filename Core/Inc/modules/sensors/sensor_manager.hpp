@@ -6,6 +6,7 @@
 
 struct SensorManagerConfig
 {
+  /* Sensor manager chỉ là lớp ghép 2 loại sensor vào một cấu hình chung. */
   LineSensorConfig line;
   UltrasonicArrayConfig ultrasonic;
 };
@@ -23,6 +24,7 @@ struct SensorManagerSnapshot
 class SensorManager
 {
 public:
+  /* Opponent mask cho phép app biết đối thủ đang nằm ở trái/giữa/phải. */
   enum : uint8_t
   {
     OPPONENT_MASK_NONE = 0U,
@@ -31,6 +33,7 @@ public:
     OPPONENT_MASK_RIGHT = (1U << 2)
   };
 
+  /* Event tổng hợp của manager ở mức "nguồn nào vừa cập nhật". */
   enum : SensorEventFlags
   {
     EVENT_NONE = SensorEventNone,

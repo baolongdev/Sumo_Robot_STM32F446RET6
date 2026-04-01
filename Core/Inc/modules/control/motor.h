@@ -20,6 +20,7 @@ extern "C" {
 
 typedef struct
 {
+  /* Một motor gồm 2 chân điều hướng và 1 kênh PWM điều tốc. */
   GPIO_TypeDef *r_en_port;
   uint16_t r_en_pin;
   GPIO_TypeDef *l_en_port;
@@ -118,6 +119,8 @@ typedef struct
   Motor_t right;
   uint32_t pwm_max;
 
+  /* Mỗi drive mode có profile tăng/giảm tốc riêng để xe phản ứng khác nhau
+     giữa lúc tìm kiếm, tấn công và chạy lệnh custom. */
   MotorStopMode_t stop_mode;
   MotorDriveMode_t drive_mode;
   MotorSlewConfig_t search_slew;
@@ -152,6 +155,8 @@ typedef struct
   uint32_t fault_flags;
 } MotorController_t;
 
+/* API điều khiển mức cao cho app.
+   App chỉ cần set target, còn update() sẽ xử lý slew, đảo chiều an toàn, watchdog và stall. */
 void MotorController_InitDefault(MotorController_t *controller);
 HAL_StatusTypeDef MotorController_Start(MotorController_t *controller);
 void MotorController_Update(MotorController_t *controller);

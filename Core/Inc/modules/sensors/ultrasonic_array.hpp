@@ -7,6 +7,7 @@
 
 struct UltrasonicArrayConfig
 {
+  /* Các tham số timing ở đây tác động trực tiếp đến dải đo và tốc độ làm mới. */
   TIM_HandleTypeDef *htim_us;
   uint16_t trigger_pulse_us;
   uint16_t echo_rise_timeout_us;
@@ -32,6 +33,7 @@ public:
   const char *name() const override;
 
 private:
+  /* FillChannel chuyển dữ liệu từ driver C sang snapshot C++ thống nhất cho app. */
   void FillChannel(UltrasonicChannelSnapshot *dst, UltrasonicSensorId_t id) const;
 
   UltrasonicArrayConfig config_;

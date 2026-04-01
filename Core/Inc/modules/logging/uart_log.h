@@ -17,6 +17,7 @@ extern "C" {
 #include "usart.h"
 #include <stdint.h>
 
+/* Logger mức C, phù hợp cho module thuần C hoặc lúc chưa muốn dùng queue bất đồng bộ C++. */
 void UartLog_Init(UART_HandleTypeDef *huart);
 void UartLog_SetEnabled(uint8_t enabled);
 uint8_t UartLog_IsEnabled(void);

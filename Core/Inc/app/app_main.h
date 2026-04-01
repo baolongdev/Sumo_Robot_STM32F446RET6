@@ -7,6 +7,8 @@
 extern "C" {
 #endif
 
+/* API mức cao của ứng dụng robot sumo.
+   App main chịu trách nhiệm ghép sensor, state machine và motor control lại thành hành vi tổng thể. */
 typedef enum
 {
   APP_DRIVE_STOP = 0,
@@ -19,6 +21,8 @@ typedef enum
 void AppMain_Init(void);
 void AppMain_Loop(void);
 
+/* Nhóm hàm manual này chủ yếu phục vụ test/debug.
+   Khi state machine tự động đang chạy, lệnh manual có thể bị ghi đè ở vòng loop kế tiếp. */
 void AppMain_SetDriveCommand(AppDriveCommand_t command, uint8_t speed_percent);
 void AppMain_Forward(uint8_t speed_percent);
 void AppMain_Backward(uint8_t speed_percent);

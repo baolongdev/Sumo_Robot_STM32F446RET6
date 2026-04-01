@@ -47,6 +47,7 @@ static HAL_StatusTypeDef SpeakerManager_SendCommand(uint8_t command, const uint8
   frame[1] = command;
   frame[2] = payload_size;
 
+  /* Checksum kiểu cộng dồn đơn giản theo giao thức của module loa. */
   checksum = SPEAKER_CMD_HEADER + command + payload_size;
   for (idx = 0U; idx < payload_size; idx++)
   {
@@ -125,6 +126,7 @@ HAL_StatusTypeDef SpeakerManager_BootSequence(uint8_t volume, uint16_t track_ind
     return HAL_ERROR;
   }
 
+  /* Chờ module loa tự boot xong rồi mới set volume/phát track để tránh mất lệnh đầu tiên. */
   HAL_Delay(SPEAKER_BOOT_DELAY_MS);
 
   status = SpeakerManager_SetVolume(volume);

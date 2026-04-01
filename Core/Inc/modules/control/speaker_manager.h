@@ -22,6 +22,7 @@ extern "C" {
 #define SPEAKER_MANAGER_DEFAULT_TRACK         1U
 #define SPEAKER_MANAGER_DEFAULT_RETRY_COUNT   5U
 
+/* Giao tiếp với module loa bằng frame UART đơn giản: set volume rồi play track. */
 void SpeakerManager_Init(UART_HandleTypeDef *huart);
 uint8_t SpeakerManager_IsReady(void);
 

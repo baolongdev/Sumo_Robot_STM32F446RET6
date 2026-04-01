@@ -25,6 +25,7 @@ void LineSensor::init()
 {
   LineSensorPolarity_t polarity = (config_.active_low != 0U) ? LINE_SENSOR_POLARITY_ACTIVE_LOW : LINE_SENSOR_POLARITY_ACTIVE_HIGH;
 
+  /* Wrapper lớp này chỉ map config C++ xuống driver C gốc. */
   LineSensor_Init(&driver_, config_.hi2c, config_.address_7bit);
   LineSensor_SetTimeout(&driver_, config_.timeout_ms);
   LineSensor_SetPollInterval(&driver_, config_.poll_interval_ms);
@@ -68,6 +69,7 @@ SensorEventFlags LineSensor::update(uint32_t now_ms)
 
   event_flags = SensorEventFromLineEventFlags(src->event_flags);
 
+  /* Chuyển nguyên snapshot của driver C sang snapshot chuẩn hóa cho app. */
   snapshot_.tick_ms = src->tick_ms;
   snapshot_.status = SensorStatusFromHal(src->status);
   snapshot_.valid = (snapshot_.status == SensorStatus::Ok) ? 1U : 0U;

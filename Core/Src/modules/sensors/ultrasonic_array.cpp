@@ -25,6 +25,7 @@ void UltrasonicArray::setConfig(const UltrasonicArrayConfig &config)
 void UltrasonicArray::init()
 {
   UltrasonicManager_InitDefault(&driver_, config_.htim_us);
+  /* Ghi đè default của driver bằng config runtime từ app. */
   driver_.config.trigger_pulse_us = config_.trigger_pulse_us;
   driver_.config.echo_rise_timeout_us = config_.echo_rise_timeout_us;
   driver_.config.echo_fall_timeout_us = config_.echo_fall_timeout_us;
@@ -67,6 +68,7 @@ SensorEventFlags UltrasonicArray::update(uint32_t now_ms)
   FillChannel(&snapshot_.mid, ULTRASONIC_SENSOR_MID);
   FillChannel(&snapshot_.right, ULTRASONIC_SENSOR_RIGHT);
 
+  /* overall_status phản ánh tình trạng "xấu nhất có ý nghĩa" của cả cụm cảm biến. */
   if ((snapshot_.left.valid != 0U) || (snapshot_.mid.valid != 0U) || (snapshot_.right.valid != 0U))
   {
     overall_status = SensorStatus::Ok;
@@ -137,6 +139,7 @@ void UltrasonicArray::FillChannel(UltrasonicChannelSnapshot *dst, UltrasonicSens
   src = UltrasonicManager_GetReading(&driver_, id);
   if (src == NULL)
   {
+    /* Nếu driver trả NULL thì coi như lỗi nội bộ, nhưng vẫn điền snapshot hợp lệ về mặt cấu trúc. */
     dst->tick_ms = HAL_GetTick();
     dst->raw_distance_cm = 0U;
     dst->distance_cm = 0U;

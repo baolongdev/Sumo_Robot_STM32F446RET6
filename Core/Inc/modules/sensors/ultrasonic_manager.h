@@ -26,6 +26,7 @@ typedef enum
   ULTRASONIC_SENSOR_COUNT = 3
 } UltrasonicSensorId_t;
 
+/* Timeout rise/fall được tách riêng để app biết sensor đang mất echo ở pha nào. */
 typedef enum
 {
   ULTRASONIC_STATUS_IDLE = 0,
@@ -36,6 +37,7 @@ typedef enum
 
 typedef struct
 {
+  /* Mỗi sensor dùng một cặp TRIG/ECHO riêng và tên ngắn để log/debug. */
   GPIO_TypeDef *trig_port;
   uint16_t trig_pin;
   GPIO_TypeDef *echo_port;
@@ -45,6 +47,7 @@ typedef struct
 
 typedef struct
 {
+  /* distance_cm là giá trị app nên dùng; raw_distance_cm giữ lại cho debug/hiệu chỉnh. */
   uint16_t raw_distance_cm;
   uint16_t distance_cm;
   uint16_t pulse_us;
@@ -77,6 +80,7 @@ typedef struct
 
 typedef struct
 {
+  /* Driver này chạy tuần tự từng cảm biến để tránh phát đồng thời gây nhiễu chéo. */
   TIM_HandleTypeDef *htim_us;
   UltrasonicSensorIo_t sensors[ULTRASONIC_SENSOR_COUNT];
   UltrasonicReading_t readings[ULTRASONIC_SENSOR_COUNT];

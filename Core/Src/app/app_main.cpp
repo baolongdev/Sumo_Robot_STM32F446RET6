@@ -15,11 +15,12 @@ constexpr uint16_t DISTANCE_MAX_CM = 120U;
 constexpr uint16_t DISTANCE_INVALID_CM = 0xFFFFU;
 constexpr uint32_t KEY_RUN = 0x5501U;
 
+/* State machine chính của robot:
+   chạy thẳng tìm mục tiêu -> track -> giữ giữa -> attack,
+   nhưng luôn có nhánh escape ưu tiên khi chạm line đen. */
 enum class AppState : uint8_t
 {
-  SearchLeft = 0,
-  SearchRight,
-  SearchForward,
+  SearchForward = 0,
   TrackLeft,
   TrackRight,
   StableCenter,
@@ -38,10 +39,10 @@ enum class LastSeenDirection : uint8_t
 
 struct AppMainConfig_t
 {
+  /* Toàn bộ tham số tuning runtime được gom tại đây để dễ hiệu chỉnh ngoài sân test. */
   uint8_t motor_invert_left;
   uint8_t motor_invert_right;
 
-  uint8_t search_turn_percent;
   uint8_t search_forward_percent;
   uint8_t track_left_turn_percent;
   uint8_t track_right_turn_percent;
@@ -49,7 +50,6 @@ struct AppMainConfig_t
   uint8_t backward_percent;
   uint8_t escape_turn_percent;
 
-  uint32_t search_sweep_ms;
   uint32_t stable_attack_delay_ms;
   uint32_t escape_backward_ms;
   uint32_t escape_turn_ms;
@@ -68,6 +68,7 @@ struct AppMainConfig_t
 
 struct AppRuntime_t
 {
+  /* Runtime chỉ giữ phần trạng thái động; mọi ngưỡng và timing nằm ở g_cfg. */
   AppState state;
   AppState prev_state;
   uint32_t state_tick_ms;
@@ -88,13 +89,11 @@ static void AppMain_SetupConfig(void)
   g_cfg.motor_invert_right = 0U;
 
   /* Tốc độ các trạng thái, tính theo %.
-     - search_turn_percent: tốc độ quay trái/phải khi đang quét tìm đối thủ
      - search_forward_percent: tốc độ chạy tới khi chưa thấy đối thủ
      - track_left/right_turn_percent: tốc độ xoay bám khi đối thủ lệch trái/phải
      - attack_percent: tốc độ đẩy khi đã giữ STB đủ lâu và chuyển sang ATK
      - backward_percent: tốc độ lùi khi gặp line đen
      - escape_turn_percent: tốc độ quay tránh mép sau khi đã lùi */
-  g_cfg.search_turn_percent = 50U;
   g_cfg.search_forward_percent = 50U;
   g_cfg.track_left_turn_percent = 42U;
   g_cfg.track_right_turn_percent = 50U;
@@ -103,13 +102,11 @@ static void AppMain_SetupConfig(void)
   g_cfg.escape_turn_percent = 56U;
 
   /* Thời gian cho từng trạng thái, đơn vị ms.
-     - search_sweep_ms: tham số cũ của pha quét trái/phải theo thời gian, hiện không dùng
      - stable_attack_delay_ms: thời gian giữ đối thủ ở giữa trước khi chuyển STB -> ATK
      - escape_backward_ms: thời gian lùi khi bị ngắt bởi line đen
      - escape_turn_ms: thời gian quay tránh mép sau khi lùi
      - lost_track_hold_ms: thời gian nhớ ngắn để giữ tracking khi ultrasonic chập chờn
      - log_interval_ms: chu kỳ log UART thông thường */
-  g_cfg.search_sweep_ms = 500U;
   g_cfg.stable_attack_delay_ms = 500U;
   g_cfg.escape_backward_ms = 370U;
   g_cfg.escape_turn_ms = 260U;
@@ -168,10 +165,6 @@ static const char *App_StateName(AppState state)
 {
   switch (state)
   {
-    case AppState::SearchLeft:
-      return "SL";
-    case AppState::SearchRight:
-      return "SR";
     case AppState::SearchForward:
       return "SF";
     case AppState::TrackLeft:
@@ -373,24 +366,6 @@ static AppState App_SelectTrackingState(const SensorManagerSnapshot &snapshot, u
   return AppState::StableCenter;
 }
 
-static void App_ApplySearchLeftCommand(void)
-{
-  MotorController_SetDriveMode(&g_motor_controller, MOTOR_DRIVE_MODE_SEARCH);
-  MotorController_Set(
-    &g_motor_controller,
-    (int16_t)-App_ClampPercent(g_cfg.search_turn_percent),
-    (int16_t)App_ClampPercent(g_cfg.search_turn_percent));
-}
-
-static void App_ApplySearchRightCommand(void)
-{
-  MotorController_SetDriveMode(&g_motor_controller, MOTOR_DRIVE_MODE_SEARCH);
-  MotorController_Set(
-    &g_motor_controller,
-    (int16_t)App_ClampPercent(g_cfg.search_turn_percent),
-    (int16_t)-App_ClampPercent(g_cfg.search_turn_percent));
-}
-
 static void App_ApplySearchForwardCommand(void)
 {
   MotorController_SetDriveMode(&g_motor_controller, MOTOR_DRIVE_MODE_SEARCH);
@@ -417,6 +392,7 @@ static void App_ApplyTrackRightCommand(void)
 
 static void App_ApplyStableCenterCommand(uint32_t now_ms)
 {
+  /* STB chủ động dừng hẳn để tránh vừa căn mục tiêu vừa tự làm lệch tâm đo. */
   MotorController_Stop(&g_motor_controller);
 
   if ((now_ms - g_rt.state_tick_ms) >= g_cfg.stable_attack_delay_ms)
@@ -437,8 +413,6 @@ static void App_UpdateLedByState(AppState state)
 
   switch (state)
   {
-    case AppState::SearchLeft:
-    case AppState::SearchRight:
     case AppState::SearchForward:
       target_mode = LED_MODE_BLINK_SLOW;
       break;
@@ -499,28 +473,37 @@ static void App_TriggerEscape(const LineSensorSnapshot &line, uint32_t now_ms)
   App_SetState(AppState::EscapeBackward, now_ms);
 }
 
-static void App_UpdateSearchState(uint32_t now_ms)
+static void App_UpdateLastSeenDirection(AppState tracking_state, uint32_t now_ms)
 {
-  switch (g_rt.state)
+  switch (tracking_state)
   {
-    case AppState::SearchLeft:
-    case AppState::SearchRight:
-      App_SetState(AppState::SearchForward, now_ms);
+    case AppState::TrackLeft:
+      g_rt.last_seen_direction = LastSeenDirection::Left;
       break;
 
-    case AppState::SearchForward:
-    default:
+    case AppState::TrackRight:
+      g_rt.last_seen_direction = LastSeenDirection::Right;
       break;
+
+    case AppState::StableCenter:
+    case AppState::Attack:
+      g_rt.last_seen_direction = LastSeenDirection::Front;
+      break;
+
+    default:
+      return;
   }
+
+  g_rt.last_seen_tick_ms = now_ms;
 }
 
 static void App_UpdateBehavior(uint32_t now_ms)
 {
   const SensorManagerSnapshot &snapshot = g_sensor_manager.snapshot();
   uint8_t boundary_black = App_LineAnyBlack(snapshot.line);
-  uint16_t nearest_cm = g_sensor_manager.nearestOpponentCm();
   uint8_t has_target = 0U;
 
+  /* Mép sàn luôn có ưu tiên cao nhất: đang track hay attack vẫn phải cắt sang escape ngay. */
   if ((boundary_black != 0U) &&
       (g_rt.state != AppState::EscapeBackward) &&
       (g_rt.state != AppState::EscapeTurn))
@@ -565,25 +548,12 @@ static void App_UpdateBehavior(uint32_t now_ms)
 
   if (g_sensor_manager.hasOpponentWithinCm(g_cfg.detect_distance_cm))
   {
+    /* Từ đây trở xuống là nhánh "thấy đối thủ": chọn hướng track, giữ STB, rồi mới sang ATK. */
     AppState tracking_state = App_SelectTrackingState(snapshot, now_ms, &has_target);
 
     if (has_target != 0U)
     {
-      if (tracking_state == AppState::TrackLeft)
-      {
-        g_rt.last_seen_direction = LastSeenDirection::Left;
-        g_rt.last_seen_tick_ms = now_ms;
-      }
-      else if (tracking_state == AppState::TrackRight)
-      {
-        g_rt.last_seen_direction = LastSeenDirection::Right;
-        g_rt.last_seen_tick_ms = now_ms;
-      }
-      else
-      {
-        g_rt.last_seen_direction = LastSeenDirection::Front;
-        g_rt.last_seen_tick_ms = now_ms;
-      }
+      App_UpdateLastSeenDirection(tracking_state, now_ms);
     }
 
     if (g_rt.state == AppState::Attack)
@@ -629,23 +599,8 @@ static void App_UpdateBehavior(uint32_t now_ms)
     }
   }
 
-  if ((g_rt.state == AppState::SearchLeft) ||
-      (g_rt.state == AppState::SearchRight) ||
-      (g_rt.state == AppState::SearchForward))
-  {
-    App_UpdateSearchState(now_ms);
-  }
-
   switch (g_rt.state)
   {
-    case AppState::SearchLeft:
-      App_ApplySearchLeftCommand();
-      break;
-
-    case AppState::SearchRight:
-      App_ApplySearchRightCommand();
-      break;
-
     case AppState::SearchForward:
       App_ApplySearchForwardCommand();
       break;
@@ -669,8 +624,6 @@ static void App_UpdateBehavior(uint32_t now_ms)
     default:
       break;
   }
-
-  (void)nearest_cm;
 }
 
 static void App_LogRun(UartLogger &logger)

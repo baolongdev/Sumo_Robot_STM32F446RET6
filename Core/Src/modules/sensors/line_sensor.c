@@ -34,7 +34,8 @@ static void LineSensor_FillBits(LineSensorSnapshot_t *snapshot)
 
 static uint8_t LineSensor_IsAllBlack(uint8_t sensor_nibble)
 {
-  /* Convention: bit 1 = white, bit 0 = black. All black => nibble == 0x0. */
+  /* Với loại module đang dùng, sau khi chuẩn hóa polarity thì bit 0 biểu thị đen.
+     Vì vậy "có line" được quy ước là cả nibble về 0x0. */
   return ((sensor_nibble & 0x0FU) == 0U) ? 1U : 0U;
 }
 
@@ -243,6 +244,7 @@ uint8_t LineSensor_Update(LineSensor_t *ctx, uint32_t now_ms)
 
   if ((now_ms - ctx->last_poll_tick) < ctx->poll_interval_ms)
   {
+    /* Poll theo chu kỳ cố định để app loop có thể chạy nhanh hơn sensor mà không spam I2C. */
     return 0U;
   }
 
@@ -263,6 +265,7 @@ uint8_t LineSensor_Update(LineSensor_t *ctx, uint32_t now_ms)
 
   if (status == HAL_OK)
   {
+    /* Chỉ cập nhật nibble/bit khi đọc I2C thành công; nếu lỗi thì giữ snapshot cũ để app tự quyết định. */
     ctx->snapshot.raw_data = ctx->raw_data;
     ctx->snapshot.sensor_nibble = ctx->sensor_nibble;
     ctx->snapshot.has_line = LineSensor_IsAllBlack(ctx->sensor_nibble);

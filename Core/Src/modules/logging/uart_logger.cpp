@@ -8,6 +8,7 @@ namespace
 {
 static uint32_t EnterCritical(void)
 {
+  /* Queue log được truy cập cả từ main loop lẫn ISR, nên cần critical section ngắn. */
   uint32_t primask = __get_PRIMASK();
   __disable_irq();
   return primask;
@@ -227,6 +228,7 @@ uint8_t UartLogger::allowRate(uint32_t key, uint32_t interval_ms, uint32_t now_m
     return 1U;
   }
 
+  /* Dùng slot cố định để rate-limit mà không phải cấp phát động. */
   for (i = 0U; i < kRateSlotCount; i++)
   {
     if ((rate_slots_[i].used != 0U) && (rate_slots_[i].key == key))
@@ -314,6 +316,7 @@ uint8_t UartLogger::enqueue(const char *text, size_t len)
 
   if (len > (size_t)free_space)
   {
+    /* Không chặn app khi đầy buffer; bỏ log mới và tăng bộ đếm dropped. */
     dropped_count_++;
     ExitCritical(primask);
     return 0U;
@@ -365,6 +368,7 @@ void UartLogger::kickTx()
   }
   else
   {
+    /* Buffer vòng có thể bị wrap, nên mỗi lần chỉ bắn một đoạn liên tục. */
     len = (uint16_t)(kBufferSize - tail);
   }
 

@@ -9,7 +9,7 @@
 using SensorTickMs = uint32_t;
 using SensorEventFlags = uint32_t;
 
-/* Unified runtime status across all sensor modules. */
+/* Trạng thái runtime dùng chung cho toàn bộ sensor, giúp app không phải xử lý từng loại enum riêng. */
 enum class SensorStatus : uint8_t
 {
   Idle = 0,
@@ -19,7 +19,7 @@ enum class SensorStatus : uint8_t
   Busy
 };
 
-/* Unified event bit convention for all sensor snapshots/managers. */
+/* Quy ước bit event dùng chung cho toàn bộ snapshot/manager của sensor. */
 enum class SensorEvent : SensorEventFlags
 {
   None = 0U,
@@ -49,7 +49,7 @@ constexpr void SensorEventSet(SensorEventFlags &event_flags, SensorEvent event)
   event_flags |= SensorEventBit(event);
 }
 
-/* Legacy aliases for compatibility with existing app code. */
+/* Alias giữ tương thích với code cũ đang dùng macro tên kiểu C. */
 constexpr SensorEventFlags SENSOR_EVENT_NONE = SensorEventBit(SensorEvent::None);
 constexpr SensorEventFlags SENSOR_EVENT_SAMPLE = SensorEventBit(SensorEvent::Sample);
 constexpr SensorEventFlags SENSOR_EVENT_STATUS_CHANGED = SensorEventBit(SensorEvent::StatusChanged);
@@ -125,7 +125,7 @@ struct SensorSnapshot
   SensorEventFlags event_flags;
 };
 
-/* Snapshot for 4-bit line sensor state. */
+/* Ảnh chụp trạng thái line sensor 4 mắt tại một thời điểm. */
 struct LineSensorSnapshot : public SensorSnapshot
 {
   uint8_t raw_data;
@@ -137,7 +137,7 @@ struct LineSensorSnapshot : public SensorSnapshot
   uint8_t line0;
 };
 
-/* Snapshot for one ultrasonic channel. */
+/* Ảnh chụp một kênh ultrasonic. */
 struct UltrasonicChannelSnapshot
 {
   SensorTickMs tick_ms;
@@ -148,7 +148,7 @@ struct UltrasonicChannelSnapshot
   uint8_t valid;
 };
 
-/* Snapshot for 3-channel ultrasonic array. */
+/* Ảnh chụp cụm 3 ultrasonic trái/giữa/phải. */
 struct UltrasonicArraySnapshot : public SensorSnapshot
 {
   UltrasonicChannelSnapshot left;

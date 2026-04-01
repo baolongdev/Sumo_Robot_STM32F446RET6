@@ -4,6 +4,8 @@
 #include "modules/sensors/sensor_types.hpp"
 #include <stdint.h>
 
+/* Interface chung để app có thể thao tác cảm biến theo một khuôn duy nhất:
+   init -> start -> update -> đọc snapshot. */
 class ISensor
 {
 public:

@@ -13,6 +13,7 @@ enum class LogLevel : uint8_t
   Debug
 };
 
+/* Logger C++ có buffer vòng + truyền UART interrupt để giảm việc block main loop. */
 class UartLogger
 {
 public:
@@ -40,6 +41,7 @@ private:
 
   struct RateLimitSlot
   {
+    /* Mỗi key đại diện cho một nhóm log rate-limited. */
     uint8_t used;
     uint32_t key;
     uint32_t last_tick;

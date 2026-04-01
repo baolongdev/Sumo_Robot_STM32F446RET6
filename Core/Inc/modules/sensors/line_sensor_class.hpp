@@ -7,6 +7,7 @@
 
 struct LineSensorConfig
 {
+  /* active_low cho phép dùng chung wrapper này với nhiều loại module line khác nhau. */
   I2C_HandleTypeDef *hi2c;
   uint8_t address_7bit;
   uint16_t timeout_ms;
@@ -29,6 +30,7 @@ public:
   const char *name() const override;
 
 private:
+  /* Wrapper C++ này chỉ làm nhiệm vụ đổi config/snapshot sang kiểu thống nhất của sensor framework. */
   LineSensorConfig config_;
   LineSensor_t driver_;
   LineSensorSnapshot snapshot_;

@@ -93,6 +93,8 @@ SensorEventFlags SensorManager::update(uint32_t now_ms)
 
   if (event_flags != EVENT_NONE)
   {
+    /* Chỉ chụp snapshot mới khi có ít nhất một nguồn sensor vừa cập nhật,
+       nhờ đó app luôn đọc được một ảnh chụp đồng bộ theo thời điểm gần nhất. */
     snapshot_.tick_ms = now_ms;
     snapshot_.event_flags = event_flags;
     snapshot_.line = line_sensor_.lineSnapshot();
@@ -138,6 +140,7 @@ uint8_t SensorManager::opponentMaskWithinCm(uint16_t threshold_cm) const
 {
   uint8_t mask = OPPONENT_MASK_NONE;
 
+  /* Chỉ coi là đối thủ khi channel vừa hợp lệ, vừa OK, vừa nằm trong ngưỡng khoảng cách. */
   if ((snapshot_.ultrasonic.left.valid != 0U) &&
       (snapshot_.ultrasonic.left.status == SensorStatus::Ok) &&
       (snapshot_.ultrasonic.left.distance_cm <= threshold_cm))
@@ -186,6 +189,8 @@ uint8_t SensorManager::nearestOpponentMask() const
     return mask;
   }
 
+  /* Nếu nhiều cảm biến cùng có giá trị gần nhất, mask sẽ chứa nhiều bit.
+     App phía trên sẽ dùng trường hợp này để quyết định giữ giữa hay tiếp tục bám trái/phải. */
   if ((snapshot_.ultrasonic.left.valid != 0U) &&
       (snapshot_.ultrasonic.left.status == SensorStatus::Ok) &&
       (snapshot_.ultrasonic.left.distance_cm == nearest_cm))

@@ -26,6 +26,7 @@ static void UartLog_WriteRaw(const char *text, uint16_t length)
     return;
   }
 
+  /* Bản logger này truyền blocking, phù hợp log ngắn và ít tần suất. */
   (void)HAL_UART_Transmit(s_log_uart, (uint8_t *)text, length, UART_LOG_TX_TIMEOUT_MS);
 }
 
@@ -99,6 +100,7 @@ void UartLog_PrintTimestamped(const char *tag, const char *fmt, ...)
     return;
   }
 
+  /* Prefix timestamp giúp so thời gian giữa các sự kiện mà không cần debugger. */
   now = HAL_GetTick();
   prefix_len = snprintf(buffer, sizeof(buffer), "[%8lu ms][%s] ", now, safe_tag);
   if ((prefix_len <= 0) || (prefix_len >= (int)sizeof(buffer)))

@@ -294,6 +294,8 @@ static MotorSideMode_t Motor_CheckReverseTransition(MotorController_t *controlle
 
   if ((now >= *unlock_tick) || (*unlock_tick == 0U))
   {
+    /* Khi đổi dấu lệnh, motor không được đảo chiều tức thì.
+       Tùy cấu hình sẽ có một pha brake/coast ngắn để bảo vệ cầu H và cơ khí. */
     *unlock_tick = now + controller->reverse_deadtime_ms;
     *brake_until_tick = now + controller->reverse_brake_ms;
   }
@@ -472,6 +474,7 @@ static void Motor_ProcessWatchdog(MotorController_t *controller, uint32_t now)
 
   if ((now - controller->last_command_tick) > controller->command_timeout_ms)
   {
+    /* Nếu app ngừng cập nhật lệnh quá lâu, watchdog sẽ kéo target về 0 và dừng an toàn. */
     controller->fault_flags |= MOTOR_FAULT_WATCHDOG;
     Motor_ClearProfileState(controller);
     controller->target_left_percent = 0;
@@ -502,6 +505,8 @@ static void Motor_ProcessStallSide(MotorController_t *controller,
     (current_ma >= controller->stall.current_threshold_ma)
   );
 
+  /* Stall chỉ được xác nhận khi đồng thời:
+     PWM đang lớn, tốc độ phản hồi thấp và dòng kéo cao trong đủ thời gian detect_ms. */
   if (stall_condition == 0U)
   {
     *stall_tick = 0U;
@@ -683,6 +688,8 @@ void MotorController_Update(MotorController_t *controller)
 
   desired_left = controller->target_left_percent;
   desired_right = controller->target_right_percent;
+  /* Thứ tự xử lý chính:
+     target -> closed loop -> chặn đảo chiều -> slew/min-percent -> xuất PWM thật. */
   Motor_ApplyClosedLoop(controller, &desired_left, &desired_right, dt_ms);
 
   left_mode = Motor_CheckReverseTransition(controller, &controller->left,

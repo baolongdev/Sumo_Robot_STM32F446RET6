@@ -65,6 +65,7 @@ void LedManager_Update(void)
 
   if ((now - s_led.last_toggle_tick) >= period_ms)
   {
+    /* LED nháy theo kiểu non-blocking để không chặn main loop. */
     LedManager_Toggle();
     s_led.last_toggle_tick = now;
   }

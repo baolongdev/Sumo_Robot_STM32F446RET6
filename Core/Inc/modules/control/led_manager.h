@@ -23,9 +23,11 @@ typedef enum
   LED_MODE_ON,
   LED_MODE_BLINK_SLOW,
   LED_MODE_BLINK_FAST,
+  /* BLINK_CUSTOM cho phép app tự quyết định chu kỳ để biểu diễn từng state riêng. */
   LED_MODE_BLINK_CUSTOM
 } LedMode_t;
 
+/* Module LED rất nhỏ, nhưng tách riêng để app chỉ cần set mode thay vì tự quản thời gian nháy. */
 void LedManager_Init(void);
 void LedManager_Update(void);
 void LedManager_SetMode(LedMode_t mode);

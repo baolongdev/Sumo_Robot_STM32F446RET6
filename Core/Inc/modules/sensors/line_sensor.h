@@ -21,6 +21,7 @@ extern "C" {
 #define LINE_SENSOR_DEFAULT_TIMEOUT_MS      100U
 #define LINE_SENSOR_DEFAULT_POLL_MS          50U
 
+/* Event của line sensor ở mức thấp, sau này có thể map lên SensorEvent dùng chung. */
 typedef enum
 {
   LINE_SENSOR_EVENT_NONE = 0U,
@@ -42,7 +43,7 @@ typedef struct
   uint32_t tick_ms;
   uint8_t raw_data;
   uint8_t sensor_nibble;
-  uint8_t has_line; /* 1 when all 4 sensors read black (0,0,0,0). */
+  uint8_t has_line; /* 1 khi cả 4 mắt cùng đọc đen theo quy ước của module. */
   uint8_t line3;
   uint8_t line2;
   uint8_t line1;
@@ -53,6 +54,7 @@ typedef struct
 
 typedef struct
 {
+  /* Driver C giữ luôn scheduler poll và snapshot gần nhất để app chỉ việc đọc. */
   I2C_HandleTypeDef *hi2c;
   uint16_t device_addr_8bit;
   uint16_t timeout_ms;

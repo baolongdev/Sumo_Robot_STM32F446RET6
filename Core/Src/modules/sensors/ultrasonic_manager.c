@@ -9,6 +9,9 @@
 
 #include "modules/sensors/ultrasonic_manager.h"
 
+/* Quy ước đang dùng trong app:
+   - giá trị hợp lệ luôn bị chặn trong 0..120 cm
+   - TIMEOUT_FALL được map thành 130 cm để dễ phân biệt với khoảng cách thật */
 #define ULTRASONIC_DISTANCE_MAX_CM            120U
 #define ULTRASONIC_DISTANCE_TIMEOUT_FALL_CM   130U
 
@@ -170,6 +173,8 @@ static void Ultrasonic_SaveResult(
   {
     reading->pulse_us = 0U;
     reading->raw_distance_cm = 0U;
+    /* TIMEOUT_FALL thường tương ứng trường hợp không bắt được cạnh xuống trong dải đo xa,
+       nên app dùng 130 cm như một sentinel thay vì 0 cm. */
     reading->distance_cm = (status == ULTRASONIC_STATUS_TIMEOUT_FALL) ? ULTRASONIC_DISTANCE_TIMEOUT_FALL_CM : 0U;
     reading->valid = 0U;
   }
@@ -333,12 +338,14 @@ uint8_t UltrasonicManager_Update(UltrasonicManager_t *ctx, uint32_t now_ms)
   switch ((UltrasonicState_t)ctx->state)
   {
     case ULTRASONIC_SM_IDLE:
+      /* Bắt đầu một vòng đo mới cho cảm biến hiện tại. */
       Ultrasonic_SetTrig(sensor, GPIO_PIN_SET);
       ctx->state = (uint8_t)ULTRASONIC_SM_TRIG_HIGH;
       ctx->state_start_us = now_us;
       break;
 
     case ULTRASONIC_SM_TRIG_HIGH:
+      /* Giữ chân TRIG đủ rộng xung rồi mới thả xuống để cảm biến phát sóng. */
       if (elapsed_us >= ctx->config.trigger_pulse_us)
       {
         Ultrasonic_SetTrig(sensor, GPIO_PIN_RESET);
@@ -348,6 +355,7 @@ uint8_t UltrasonicManager_Update(UltrasonicManager_t *ctx, uint32_t now_ms)
       break;
 
     case ULTRASONIC_SM_WAIT_ECHO_RISE:
+      /* Chờ cạnh lên của ECHO. Không thấy trong timeout thì coi như không có phản hồi đầu vào. */
       if (Ultrasonic_ReadEcho(sensor) == GPIO_PIN_SET)
       {
         ctx->echo_rise_us = now_us;
@@ -365,6 +373,7 @@ uint8_t UltrasonicManager_Update(UltrasonicManager_t *ctx, uint32_t now_ms)
     {
       uint16_t pulse_us = Ultrasonic_ElapsedUs(ctx->echo_rise_us, now_us);
 
+      /* Khi ECHO xuống thấp, độ rộng xung chính là thời gian bay khứ hồi của sóng siêu âm. */
       if (Ultrasonic_ReadEcho(sensor) == GPIO_PIN_RESET)
       {
         Ultrasonic_SaveResult(ctx, sensor_id, pulse_us, ULTRASONIC_STATUS_OK, now_ms);
@@ -381,6 +390,7 @@ uint8_t UltrasonicManager_Update(UltrasonicManager_t *ctx, uint32_t now_ms)
     }
 
     case ULTRASONIC_SM_GAP:
+      /* Chèn khoảng nghỉ giữa các cảm biến để giảm nhiễu chéo khi 3 đầu dò đặt gần nhau. */
       if (elapsed_us >= ctx->config.inter_sensor_gap_us)
       {
         ctx->state = (uint8_t)ULTRASONIC_SM_IDLE;
