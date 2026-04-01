@@ -9,6 +9,9 @@
 
 #include "modules/sensors/ultrasonic_manager.h"
 
+#define ULTRASONIC_DISTANCE_MAX_CM            120U
+#define ULTRASONIC_DISTANCE_TIMEOUT_FALL_CM   130U
+
 typedef enum
 {
   ULTRASONIC_SM_IDLE = 0,
@@ -56,6 +59,16 @@ static GPIO_PinState Ultrasonic_ReadEcho(const UltrasonicSensorIo_t *io)
 static uint16_t Ultrasonic_PulseUsToCm(uint16_t pulse_us)
 {
   return (uint16_t)((pulse_us + 29U) / 58U);
+}
+
+static uint16_t Ultrasonic_ClampDistanceCm(uint16_t distance_cm)
+{
+  if (distance_cm > ULTRASONIC_DISTANCE_MAX_CM)
+  {
+    return ULTRASONIC_DISTANCE_MAX_CM;
+  }
+
+  return distance_cm;
 }
 
 static float Ultrasonic_KalmanUpdate(UltrasonicKalmanState_t *kf, float measurement, float q, float r)
@@ -150,14 +163,14 @@ static void Ultrasonic_SaveResult(
       ctx->kalman[(uint8_t)sensor_id].initialized = 0U;
     }
 
-    reading->distance_cm = Ultrasonic_FloatToCm(filtered_cm);
+    reading->distance_cm = Ultrasonic_ClampDistanceCm(Ultrasonic_FloatToCm(filtered_cm));
     reading->valid = 1U;
   }
   else
   {
     reading->pulse_us = 0U;
     reading->raw_distance_cm = 0U;
-    reading->distance_cm = 0U;
+    reading->distance_cm = (status == ULTRASONIC_STATUS_TIMEOUT_FALL) ? ULTRASONIC_DISTANCE_TIMEOUT_FALL_CM : 0U;
     reading->valid = 0U;
   }
 }
