@@ -11,6 +11,3 @@ Release/
 *.list
 *.bin
 *.hex
-
-# Local IDE metadata
-.settings/language.settings.xml
