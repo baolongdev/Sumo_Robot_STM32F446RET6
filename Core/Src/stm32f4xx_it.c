@@ -20,7 +20,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f4xx_it.h"
-#include "usart.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
@@ -199,14 +198,17 @@ void SysTick_Handler(void)
 /* please refer to the startup file (startup_stm32f4xx.s).                    */
 /******************************************************************************/
 
+/* USER CODE BEGIN 1 */
+
 /**
-  * @brief This function handles USART1 global interrupt.
+  * @brief USART1 interrupt handler — bắt buộc để HAL_UART_Transmit_IT hoạt động.
+  *        Nếu không có handler này, tx_busy_ trong UartLogger sẽ kẹt = 1 mãi mãi
+  *        và toàn bộ log bị drop sau lần truyền đầu tiên.
   */
 void USART1_IRQHandler(void)
 {
+  extern UART_HandleTypeDef huart1;
   HAL_UART_IRQHandler(&huart1);
 }
-
-/* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */

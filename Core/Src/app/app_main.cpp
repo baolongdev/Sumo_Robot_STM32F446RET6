@@ -3,6 +3,7 @@
 #include "i2c.h"
 #include "modules/control/led_manager.h"
 #include "modules/control/motor.h"
+#include "modules/control/servo_manager.h"
 #include "modules/logging/uart_logger.hpp"
 #include "modules/sensors/sensor_manager.hpp"
 #include "tim.h"
@@ -13,7 +14,26 @@ namespace
 constexpr uint16_t DISTANCE_TIMEOUT_FALL_CM = 130U;
 constexpr uint16_t DISTANCE_MAX_CM = 120U;
 constexpr uint16_t DISTANCE_INVALID_CM = 0xFFFFU;
-constexpr uint32_t KEY_RUN = 0x5501U;
+constexpr uint32_t KEY_RUN      = 0x5501U;
+constexpr uint32_t KEY_HDR_SEP1 = 0x5502U;  /* Rate-limit key cho dòng SEP (trên). */
+constexpr uint32_t KEY_HDR_HDR  = 0x5503U;  /* Rate-limit key cho dòng HEADER.     */
+constexpr uint32_t KEY_HDR_SEP2 = 0x5504U;  /* Rate-limit key cho dòng SEP (dưới). */
+constexpr uint32_t HDR_PERIOD_MS = 10000U;   /* Nhắc lại header mỗi 10 giây.        */
+
+/* -----------------------------------------------------------------------
+   Table log format — 1 dòng data mỗi lần log, header in 1 lần lúc init
+   và nhắc lại mỗi HDR_PERIOD_MS giây:
+
+   [INF][APP] +-------+-----+-----+-----+-----+---+------+
+   [INF][APP] | STATE |  L  |  M  |  R  | OPP | B | LINE |
+   [INF][APP] +-------+-----+-----+-----+-----+---+------+
+   [INF][APP] | STB   | 130 |  49 | 130 |  M  | 0 | 0000 |   ← rate-limited
+   [INF][APP] |*ATK   |  22 |  18 |  25 |  M  | 0 | 0000 |   ← * = state change
+   ----------------------------------------------------------------------- */
+static const char APP_LOG_SEP[]     = "+-------+-----+-----+-----+-----+---+------+";
+static const char APP_LOG_HDR[]     = "| STATE |  L  |  M  |  R  | OPP | B | LINE |";
+static const char APP_LOG_FMT[]     = "| %-5s | %3u | %3u | %3u | %-3s | %u | %u%u%u%u |";
+static const char APP_LOG_FMT_CHG[] = "|*%-5s | %3u | %3u | %3u | %-3s | %u | %u%u%u%u |";
 
 /* State machine chính của robot:
    chạy thẳng tìm mục tiêu -> track -> giữ giữa -> attack,
@@ -124,7 +144,7 @@ static void AppMain_SetupConfig(void)
   /* Ngưỡng nhận diện đối thủ theo cm.
      Giá trị ultrasonic hợp lệ bị chặn trong khoảng 0..120 cm.
      TIMEOUT_FALL được map thành 130 cm, nên 130 sẽ không bị tính là có đối thủ.
-     - detect_distance_cm: giá trị cm nguyên cho điều kiện "nhỏ hơn 50 cm", nên đặt 49
+     - detect_distance_cm: khoảng cách tối đa (cm) để xem đối thủ là hợp lệ (hiện = 60 cm)
      - rush_distance_cm: khi đối thủ áp sát trong ngưỡng này thì bỏ chờ STB và tăng tốc tối đa */
   g_cfg.detect_distance_cm = 60U;
   g_cfg.rush_distance_cm = 3U;
@@ -362,11 +382,8 @@ static AppState App_SelectTrackingState(const SensorManagerSnapshot &snapshot, u
       return AppState::TrackRight;
     }
 
-    if (mid_seen != 0U)
-    {
-      return AppState::StableCenter;
-    }
-
+    /* mid_seen luôn == 0 ở đây (nếu != 0 đã return StableCenter từ trên).
+       Giữ hướng đang bám nếu chênh lệch trái/phải chưa vượt margin. */
     if (g_rt.state == AppState::TrackLeft)
     {
       return AppState::TrackLeft;
@@ -599,11 +616,9 @@ static void App_UpdateBehavior(uint32_t now_ms)
       App_UpdateLastSeenDirection(tracking_state, now_ms);
     }
 
-    if (g_rt.state == AppState::Attack)
-    {
-      App_SetState(AppState::Attack, now_ms);
-    }
-    else
+    /* Attack state đã vào thì giữ nguyên: không để tracking state override.
+       App_SetState chỉ update khi state thực sự thay đổi, nên skip nếu đang Attack. */
+    if (g_rt.state != AppState::Attack)
     {
       App_SetState(tracking_state, now_ms);
     }
@@ -658,6 +673,12 @@ static void App_UpdateBehavior(uint32_t now_ms)
 
     case AppState::StableCenter:
       App_ApplyStableCenterCommand(snapshot, now_ms);
+      /* Nếu STB vừa chuyển sang Attack trong cùng vòng loop (rush hoặc delay xong),
+         apply attack command ngay để không bị trễ 1 cycle do motor vẫn đang Stop. */
+      if (g_rt.state == AppState::Attack)
+      {
+        App_ApplyAttackCommand(snapshot);
+      }
       break;
 
     case AppState::Attack:
@@ -672,54 +693,42 @@ static void App_UpdateBehavior(uint32_t now_ms)
 static void App_LogRun(UartLogger &logger)
 {
   const SensorManagerSnapshot &snapshot = g_sensor_manager.snapshot();
-  uint8_t opponent_mask = g_sensor_manager.opponentMaskWithinCm(g_cfg.detect_distance_cm);
+  uint8_t opponent_mask  = g_sensor_manager.opponentMaskWithinCm(g_cfg.detect_distance_cm);
   uint8_t boundary_black = App_LineAnyBlack(snapshot.line);
-  uint8_t state_changed = (uint8_t)(g_rt.state != g_rt.prev_state);
-  const char *state_name = App_StateName(g_rt.state);
-  const char *opponent_name = App_OpponentName(opponent_mask);
-  unsigned int left_cm = (unsigned int)App_ReportDistanceCm(snapshot.ultrasonic.left);
-  unsigned int mid_cm = (unsigned int)App_ReportDistanceCm(snapshot.ultrasonic.mid);
+  uint8_t state_changed  = (uint8_t)(g_rt.state != g_rt.prev_state);
+  const char  *state_name    = App_StateName(g_rt.state);
+  const char  *opponent_name = App_OpponentName(opponent_mask);
+  unsigned int left_cm  = (unsigned int)App_ReportDistanceCm(snapshot.ultrasonic.left);
+  unsigned int mid_cm   = (unsigned int)App_ReportDistanceCm(snapshot.ultrasonic.mid);
   unsigned int right_cm = (unsigned int)App_ReportDistanceCm(snapshot.ultrasonic.right);
   unsigned int line3 = (unsigned int)snapshot.line.line3;
   unsigned int line2 = (unsigned int)snapshot.line.line2;
   unsigned int line1 = (unsigned int)snapshot.line.line1;
   unsigned int line0 = (unsigned int)snapshot.line.line0;
 
+  /* Nhắc lại header mỗi HDR_PERIOD_MS để dễ đọc khi cuộn log.
+     Ba key riêng nhau để cả 3 dòng cùng pass rate-limit một lúc. */
+  logger.logRateLimited(LogLevel::Info, "APP", KEY_HDR_SEP1, HDR_PERIOD_MS, APP_LOG_SEP);
+  logger.logRateLimited(LogLevel::Info, "APP", KEY_HDR_HDR,  HDR_PERIOD_MS, APP_LOG_HDR);
+  logger.logRateLimited(LogLevel::Info, "APP", KEY_HDR_SEP2, HDR_PERIOD_MS, APP_LOG_SEP);
+
   if (state_changed != 0U)
   {
-    logger.log(
-      LogLevel::Info,
-      "APP",
-      "-> %s U=%u/%u/%u O=%s B=%u L=%u%u%u%u",
-      state_name,
-      left_cm,
-      mid_cm,
-      right_cm,
-      opponent_name,
-      (unsigned int)boundary_black,
-      line3,
-      line2,
-      line1,
-      line0);
+    /* Đổi state → in ngay, ký hiệu '*' ở đầu để phân biệt với dòng thường.
+       Chỉ 1 dòng, không in lại header → tránh spam buffer khi state lắc nhanh. */
+    logger.log(LogLevel::Info, "APP", APP_LOG_FMT_CHG,
+               state_name, left_cm, mid_cm, right_cm,
+               opponent_name, (unsigned int)boundary_black,
+               line3, line2, line1, line0);
   }
   else
   {
-    logger.logRateLimited(
-      LogLevel::Info,
-      "APP",
-      KEY_RUN,
-      g_cfg.log_interval_ms,
-      "%s U=%u/%u/%u O=%s B=%u L=%u%u%u%u",
-      state_name,
-      left_cm,
-      mid_cm,
-      right_cm,
-      opponent_name,
-      (unsigned int)boundary_black,
-      line3,
-      line2,
-      line1,
-      line0);
+    /* Giữ nguyên state → rate-limited, không in liên tục. */
+    logger.logRateLimited(LogLevel::Info, "APP", KEY_RUN, g_cfg.log_interval_ms,
+                          APP_LOG_FMT,
+                          state_name, left_cm, mid_cm, right_cm,
+                          opponent_name, (unsigned int)boundary_black,
+                          line3, line2, line1, line0);
   }
 
   g_rt.prev_state = g_rt.state;
@@ -766,7 +775,15 @@ extern "C" void AppMain_Init(void)
   g_rt.last_seen_direction = LastSeenDirection::None;
   g_rt.last_seen_tick_ms = 0U;
 
+  ServoManager_Init(&htim3);
+  ServoManager_RandomStart(500U, 1200U, 600U, HAL_GetTick());
+
   App_UpdateLedByState(g_rt.state);
+  /* In header table một lần lúc khởi động để terminal sẵn sàng nhận log. */
+  logger.log(LogLevel::Info, "APP", APP_LOG_SEP);
+  logger.log(LogLevel::Info, "APP", APP_LOG_HDR);
+  logger.log(LogLevel::Info, "APP", APP_LOG_SEP);
+
   LOGI("INIT", "Search-forward/track/attack mode started with line interrupt priority");
 }
 
@@ -781,6 +798,7 @@ extern "C" void AppMain_Loop(void)
   MotorController_Update(&g_motor_controller);
   App_LogRun(logger);
 
+  ServoManager_RandomUpdate(now_ms);
   LedManager_Update();
   logger.process();
 }
