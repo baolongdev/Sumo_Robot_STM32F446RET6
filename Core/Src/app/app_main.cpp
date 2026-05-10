@@ -60,6 +60,7 @@ struct AppMainConfig_t
   uint8_t escape_turn_right_default;
 
   uint16_t detect_distance_cm;
+  uint16_t rush_distance_cm;
   uint16_t track_side_margin_cm;
   uint32_t track_state_hold_ms;
 
@@ -94,7 +95,7 @@ static void AppMain_SetupConfig(void)
      - attack_percent: tốc độ đẩy khi đã giữ STB đủ lâu và chuyển sang ATK
      - backward_percent: tốc độ lùi khi gặp line đen
      - escape_turn_percent: tốc độ quay tránh mép sau khi đã lùi */
-  g_cfg.search_forward_percent = 50U;
+  g_cfg.search_forward_percent = 40U;
   g_cfg.track_left_turn_percent = 42U;
   g_cfg.track_right_turn_percent = 50U;
   g_cfg.attack_percent = 80U;
@@ -107,10 +108,10 @@ static void AppMain_SetupConfig(void)
      - escape_turn_ms: thời gian quay tránh mép sau khi lùi
      - lost_track_hold_ms: thời gian nhớ ngắn để giữ tracking khi ultrasonic chập chờn
      - log_interval_ms: chu kỳ log UART thông thường */
-  g_cfg.stable_attack_delay_ms = 500U;
-  g_cfg.escape_backward_ms = 370U;
-  g_cfg.escape_turn_ms = 260U;
-  g_cfg.lost_track_hold_ms = 220U;
+  g_cfg.stable_attack_delay_ms = 400U;
+  g_cfg.escape_backward_ms = 570U;
+  g_cfg.escape_turn_ms = 500U;
+  g_cfg.lost_track_hold_ms = 320U;
   g_cfg.log_interval_ms = 180U;
 
   /* Cách chọn hướng quay khi tránh mép.
@@ -122,8 +123,11 @@ static void AppMain_SetupConfig(void)
 
   /* Ngưỡng nhận diện đối thủ theo cm.
      Giá trị ultrasonic hợp lệ bị chặn trong khoảng 0..120 cm.
-     TIMEOUT_FALL được map thành 130 cm, nên 130 sẽ không bị tính là có đối thủ. */
-  g_cfg.detect_distance_cm = DISTANCE_MAX_CM;
+     TIMEOUT_FALL được map thành 130 cm, nên 130 sẽ không bị tính là có đối thủ.
+     - detect_distance_cm: giá trị cm nguyên cho điều kiện "nhỏ hơn 50 cm", nên đặt 49
+     - rush_distance_cm: khi đối thủ áp sát trong ngưỡng này thì bỏ chờ STB và tăng tốc tối đa */
+  g_cfg.detect_distance_cm = 60U;
+  g_cfg.rush_distance_cm = 3U;
 
   /* Tham số làm mượt tracking để xe bớt lắc trái/phải.
      - nếu sensor giữa đã thấy đối thủ thì ưu tiên giữ STB để chuẩn bị sang ATK
@@ -239,6 +243,29 @@ static uint16_t App_TrackingDistanceCm(const UltrasonicChannelSnapshot &channel)
   }
 
   return channel.distance_cm;
+}
+
+static uint16_t App_NearestValidDistanceCm(const SensorManagerSnapshot &snapshot)
+{
+  uint16_t nearest_cm = DISTANCE_INVALID_CM;
+  uint16_t left_cm = App_TrackingDistanceCm(snapshot.ultrasonic.left);
+  uint16_t mid_cm = App_TrackingDistanceCm(snapshot.ultrasonic.mid);
+  uint16_t right_cm = App_TrackingDistanceCm(snapshot.ultrasonic.right);
+
+  if (left_cm < nearest_cm)
+  {
+    nearest_cm = left_cm;
+  }
+  if (mid_cm < nearest_cm)
+  {
+    nearest_cm = mid_cm;
+  }
+  if (right_cm < nearest_cm)
+  {
+    nearest_cm = right_cm;
+  }
+
+  return nearest_cm;
 }
 
 static uint8_t App_LineAnyBlack(const LineSensorSnapshot &line)
@@ -390,8 +417,16 @@ static void App_ApplyTrackRightCommand(void)
     (int16_t)-App_ClampPercent(g_cfg.track_right_turn_percent));
 }
 
-static void App_ApplyStableCenterCommand(uint32_t now_ms)
+static void App_ApplyStableCenterCommand(const SensorManagerSnapshot &snapshot, uint32_t now_ms)
 {
+  uint16_t nearest_cm = App_NearestValidDistanceCm(snapshot);
+
+  if (nearest_cm <= g_cfg.rush_distance_cm)
+  {
+    App_SetState(AppState::Attack, now_ms);
+    return;
+  }
+
   /* STB chủ động dừng hẳn để tránh vừa căn mục tiêu vừa tự làm lệch tâm đo. */
   MotorController_Stop(&g_motor_controller);
 
@@ -401,10 +436,18 @@ static void App_ApplyStableCenterCommand(uint32_t now_ms)
   }
 }
 
-static void App_ApplyAttackCommand(void)
+static void App_ApplyAttackCommand(const SensorManagerSnapshot &snapshot)
 {
+  uint8_t attack_percent = g_cfg.attack_percent;
+  uint16_t nearest_cm = App_NearestValidDistanceCm(snapshot);
+
+  if (nearest_cm <= g_cfg.rush_distance_cm)
+  {
+    attack_percent = 100U;
+  }
+
   MotorController_SetDriveMode(&g_motor_controller, MOTOR_DRIVE_MODE_ATTACK);
-  MotorController_Charge(&g_motor_controller, App_ClampPercent(g_cfg.attack_percent));
+  MotorController_Charge(&g_motor_controller, App_ClampPercent(attack_percent));
 }
 
 static void App_UpdateLedByState(AppState state)
@@ -614,11 +657,11 @@ static void App_UpdateBehavior(uint32_t now_ms)
       break;
 
     case AppState::StableCenter:
-      App_ApplyStableCenterCommand(now_ms);
+      App_ApplyStableCenterCommand(snapshot, now_ms);
       break;
 
     case AppState::Attack:
-      App_ApplyAttackCommand();
+      App_ApplyAttackCommand(snapshot);
       break;
 
     default:
